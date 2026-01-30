@@ -1043,26 +1043,164 @@ cse250|schema||vijay||UPDATE|G</Grants>
       <CollationName>utf8mb3_general_ci</CollationName>
     </schema>
     <user id="326" parent="1" name="vijay"/>
-    <table id="327" parent="324" name="test">
+    <table id="327" parent="324" name="clients">
       <DetailsLevel>3</DetailsLevel>
       <Engine>InnoDB</Engine>
       <CollationName>utf8mb4_general_ci</CollationName>
     </table>
-    <column id="328" parent="327" name="id">
+    <table id="328" parent="324" name="products">
+      <DetailsLevel>3</DetailsLevel>
+      <Engine>InnoDB</Engine>
+      <CollationName>utf8mb4_general_ci</CollationName>
+    </table>
+    <table id="329" parent="324" name="quotations">
+      <DetailsLevel>3</DetailsLevel>
+      <Engine>InnoDB</Engine>
+      <CollationName>utf8mb4_general_ci</CollationName>
+    </table>
+    <table id="330" parent="324" name="test">
+      <DetailsLevel>3</DetailsLevel>
+      <Engine>InnoDB</Engine>
+      <CollationName>utf8mb4_general_ci</CollationName>
+    </table>
+    <column id="331" parent="327" name="client_id">
+      <AutoIncrement>1</AutoIncrement>
       <NotNull>1</NotNull>
       <Position>1</Position>
       <StoredType>int(11)|0s</StoredType>
     </column>
-    <column id="329" parent="327" name="name">
+    <column id="332" parent="327" name="company_name">
+      <NotNull>1</NotNull>
+      <Position>2</Position>
+      <StoredType>varchar(100)|0s</StoredType>
+    </column>
+    <column id="333" parent="327" name="contact_person">
+      <Position>3</Position>
+      <StoredType>varchar(100)|0s</StoredType>
+    </column>
+    <column id="334" parent="327" name="email">
+      <Position>4</Position>
+      <StoredType>varchar(100)|0s</StoredType>
+    </column>
+    <column id="335" parent="327" name="country">
+      <Position>5</Position>
+      <StoredType>varchar(50)|0s</StoredType>
+    </column>
+    <column id="336" parent="327" name="created_at">
+      <DefaultExpression>current_timestamp()</DefaultExpression>
+      <NotNull>1</NotNull>
+      <Position>6</Position>
+      <StoredType>timestamp|0s</StoredType>
+    </column>
+    <index id="337" parent="327" name="PRIMARY">
+      <ColNames>client_id</ColNames>
+      <Type>btree</Type>
+      <Unique>1</Unique>
+    </index>
+    <key id="338" parent="327" name="PRIMARY">
+      <NameSurrogate>1</NameSurrogate>
+      <Primary>1</Primary>
+      <UnderlyingIndexName>PRIMARY</UnderlyingIndexName>
+    </key>
+    <column id="339" parent="328" name="product_id">
+      <AutoIncrement>1</AutoIncrement>
+      <NotNull>1</NotNull>
+      <Position>1</Position>
+      <StoredType>int(11)|0s</StoredType>
+    </column>
+    <column id="340" parent="328" name="fabric_name">
+      <NotNull>1</NotNull>
+      <Position>2</Position>
+      <StoredType>varchar(100)|0s</StoredType>
+    </column>
+    <column id="341" parent="328" name="fabric_type">
+      <Position>3</Position>
+      <StoredType>varchar(50)|0s</StoredType>
+    </column>
+    <column id="342" parent="328" name="gsm">
+      <Position>4</Position>
+      <StoredType>int(11)|0s</StoredType>
+    </column>
+    <column id="343" parent="328" name="price_per_meter">
+      <Position>5</Position>
+      <StoredType>decimal(10,2 digit)|0s</StoredType>
+    </column>
+    <column id="344" parent="328" name="created_at">
+      <DefaultExpression>current_timestamp()</DefaultExpression>
+      <NotNull>1</NotNull>
+      <Position>6</Position>
+      <StoredType>timestamp|0s</StoredType>
+    </column>
+    <index id="345" parent="328" name="PRIMARY">
+      <ColNames>product_id</ColNames>
+      <Type>btree</Type>
+      <Unique>1</Unique>
+    </index>
+    <key id="346" parent="328" name="PRIMARY">
+      <NameSurrogate>1</NameSurrogate>
+      <Primary>1</Primary>
+      <UnderlyingIndexName>PRIMARY</UnderlyingIndexName>
+    </key>
+    <column id="347" parent="329" name="quotation_id">
+      <AutoIncrement>1</AutoIncrement>
+      <NotNull>1</NotNull>
+      <Position>1</Position>
+      <StoredType>int(11)|0s</StoredType>
+    </column>
+    <column id="348" parent="329" name="client_id">
+      <Position>2</Position>
+      <StoredType>int(11)|0s</StoredType>
+    </column>
+    <column id="349" parent="329" name="quotation_date">
+      <Position>3</Position>
+      <StoredType>date|0s</StoredType>
+    </column>
+    <column id="350" parent="329" name="valid_until">
+      <Position>4</Position>
+      <StoredType>date|0s</StoredType>
+    </column>
+    <column id="351" parent="329" name="total_amount">
+      <Position>5</Position>
+      <StoredType>decimal(12,2 digit)|0s</StoredType>
+    </column>
+    <column id="352" parent="329" name="status">
+      <Position>6</Position>
+      <StoredType>varchar(30)|0s</StoredType>
+    </column>
+    <foreign-key id="353" parent="329" name="quotations_ibfk_1">
+      <ColNames>client_id</ColNames>
+      <RefColNames>client_id</RefColNames>
+      <RefTableName>clients</RefTableName>
+    </foreign-key>
+    <index id="354" parent="329" name="PRIMARY">
+      <ColNames>quotation_id</ColNames>
+      <Type>btree</Type>
+      <Unique>1</Unique>
+    </index>
+    <index id="355" parent="329" name="client_id">
+      <ColNames>client_id</ColNames>
+      <Type>btree</Type>
+    </index>
+    <key id="356" parent="329" name="PRIMARY">
+      <NameSurrogate>1</NameSurrogate>
+      <Primary>1</Primary>
+      <UnderlyingIndexName>PRIMARY</UnderlyingIndexName>
+    </key>
+    <column id="357" parent="330" name="id">
+      <NotNull>1</NotNull>
+      <Position>1</Position>
+      <StoredType>int(11)|0s</StoredType>
+    </column>
+    <column id="358" parent="330" name="name">
       <Position>2</Position>
       <StoredType>varchar(50)|0s</StoredType>
     </column>
-    <index id="330" parent="327" name="PRIMARY">
+    <index id="359" parent="330" name="PRIMARY">
       <ColNames>id</ColNames>
       <Type>btree</Type>
       <Unique>1</Unique>
     </index>
-    <key id="331" parent="327" name="PRIMARY">
+    <key id="360" parent="330" name="PRIMARY">
       <NameSurrogate>1</NameSurrogate>
       <Primary>1</Primary>
       <UnderlyingIndexName>PRIMARY</UnderlyingIndexName>
