@@ -1,5 +1,6 @@
 # Textile Quotation System (CSE250-DBMS)
 
+---
 ## 1. Project Overview
 
 The **Textile Quotation System** is a simple web-based application developed as part of the **CSE250 – Database Management Systems** course.  
