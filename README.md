@@ -49,3 +49,31 @@ The database consists of the following main entities:
 - **Product**: Stores textile product details including product name, type, and price.
 - **Quotation**: Represents a quotation generated for a customer.
 - **Quotation-Item**: A junction table to model the many-to-many relationship between quotations and products.
+Textile Quotation System (CSE250-DBMS)
+
+## 5. API Endpoints
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/products` | Fetch all available textile products. |
+| `POST` | `/api/enquiry` | Submit a new customer enquiry to the database. |
+| `POST` | `/api/create-quotation` | Generate a new multi-item quotation. |
+
+---
+
+## 6. Installation & Setup
+1. **Clone the Repo:** `git clone https://github.com`
+2. **Install Dependencies:** `npm install`
+3. **Environment Variables:** Create a `.env` file and add:
+   ```env
+   DB_HOST=localhost
+   DB_USER=root
+   DB_PASS=your_password
+   DB_NAME=kt_impex
+   PORT=5000
+Run Server: node server.js
+
+
+
+
+
