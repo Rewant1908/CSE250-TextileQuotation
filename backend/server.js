@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import pool from './db.js';
+import pool from './db.js'; // 👈 Must include .js extension
 
 const app = express();
 app.use(cors());
