@@ -1,20 +1,22 @@
 {
-  "name": "cse250-quote",
+  "name": "cse250_project2_product_enquiry_quotation_",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "type": "module",
+  "description": "This repository is for the project of the course CSE250 DBMS.",
+  "main": "db.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Rewant1908/cse250-quote.git"
+    "url": "git+https://github.com/Rewant1908/CSE250_Project2_product_Enquiry_quotation_.git"
   },
-  "private": true,
-  "dependencies": {
-    "cors": "^2.8.6",
-    "dotenv": "^17.3.1",
-    "express": "^5.2.1",
-    "mariadb": "^3.5.1"
-  }
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Rewant1908/CSE250_Project2_product_Enquiry_quotation_/issues"
+  },
+  "homepage": "https://github.com/Rewant1908/CSE250_Project2_product_Enquiry_quotation_#readme"
 }
