@@ -10,5 +10,11 @@
     "type": "git",
     "url": "https://github.com/Rewant1908/cse250-quote.git"
   },
-  "private": true
+  "private": true,
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "mariadb": "^3.5.1"
+  }
 }
