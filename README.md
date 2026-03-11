@@ -152,7 +152,6 @@ PORT=5000
 
 **5. Start the server**
 ```bash
-cd backend
 npm start
 ```
 
