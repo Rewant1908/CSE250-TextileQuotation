@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "description": "This repository is for the project of the course CSE250 DBMS.",
-  "main": "db.js",
+  "main": "server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js"
@@ -18,5 +18,11 @@
   "bugs": {
     "url": "https://github.com/Rewant1908/CSE250_Project2_product_Enquiry_quotation_/issues"
   },
-  "homepage": "https://github.com/Rewant1908/CSE250_Project2_product_Enquiry_quotation_#readme"
+  "homepage": "https://github.com/Rewant1908/CSE250_Project2_product_Enquiry_quotation_#readme",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "mariadb": "^3.5.2"
+  }
 }
