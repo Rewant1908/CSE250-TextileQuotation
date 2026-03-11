@@ -110,7 +110,7 @@ CSE250-TextileQuotation/
 
 ---
 
-## 7. Installation & Setup
+## 6. Installation & Setup
 
 ### Prerequisites
 - Node.js v18+
@@ -165,7 +165,7 @@ Open `frontend/index.html` in your browser.
 
 ---
 
-## 8. Course Information
+## 7. Course Information
 
 - **Course**: CSE250 – Database Management Systems
 - **Project**: Textile Quotation System
