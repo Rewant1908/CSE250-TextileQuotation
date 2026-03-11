@@ -127,7 +127,6 @@ cd CSE250-TextileQuotation
 
 **2. Install dependencies**
 ```bash
-cd backend
 npm install
 ```
 
