@@ -18,7 +18,7 @@ The system automates the process of generating quotations by allowing users to r
 - **Price Snapshot** — Locks price at time of quote so future price changes do not affect old quotations
 - **Quotation History** — View all past quotations with grand totals and line items
 
----
+----
 
 ## 3. Technology Stack
 
