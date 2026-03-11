@@ -3,18 +3,18 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const pool = createPool({
-    host: 'localhost',
-    user: 'root',
-    password: 'Rewant@1908',
-    database: 'kt_impex',
+    host:            process.env.DB_HOST || 'localhost',
+    user:            process.env.DB_USER || 'root',
+    password:        process.env.DB_PASS,
+    database:        process.env.DB_NAME || 'kt_impex',
     connectionLimit: 5
 });
 
 pool.getConnection()
     .then(conn => {
-        console.log("MariaDB Connected to KT Impex Engine");
+        console.log("✅ MariaDB Connected to KT Impex Engine");
         conn.release();
     })
-    .catch(err => console.log(" DB Connection Error: " + err));
+    .catch(err => console.error("❌ DB Connection Error: " + err));
 
 export default pool;
