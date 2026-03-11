@@ -1,6 +1,6 @@
 # Installation & Setup
 
-This page contains the complete step by step guide to set up the Textile Quotation System on your local machine.
+This page contains the complete step-by-step guide to set up the Textile Quotation System on your local machine.
 
 ---
 
@@ -8,13 +8,13 @@ This page contains the complete step by step guide to set up the Textile Quotati
 
 Before starting make sure you have the following installed:
 
-| Tool | Purpose | Download |
-|---|---|---|
-| Node.js v18+ | Runs the backend server | https://nodejs.org |
-| MariaDB | Database server | https://mariadb.org |
-| Git | Version control | https://git-scm.com |
-| WSL (Linux) | Linux environment on Windows | Windows Store |
-| IntelliJ IDEA | Development environment | https://www.jetbrains.com/idea/ |
+| Tool          | Purpose                      | Download                        |
+|---------------|------------------------------|---------------------------------|
+| Node.js v18+  | Runs the backend server      | https://nodejs.org              |
+| MariaDB       | Database server              | https://mariadb.org             |
+| Git           | Version control              | https://git-scm.com             |
+| WSL (Linux)   | Linux environment on Windows | Windows Store                   |
+| IntelliJ IDEA | Development environment      | https://www.jetbrains.com/idea/ |
 
 ### IntelliJ IDEA
 Download **IntelliJ IDEA Ultimate (Version 2025.2.6)**.
@@ -52,11 +52,11 @@ When Node.js was first initialized for this project, the following command was r
 npm init -y
 ```
 
-| Part | Meaning |
-|---|---|
-| `npm` | Node Package Manager — manages all project dependencies |
-| `init` | Initializes a new Node.js project |
-| `-y` | Short for `--yes` — automatically accepts all default settings and creates `package.json` |
+| Part   | Meaning                                                                                   |
+|--------|-------------------------------------------------------------------------------------------|
+| `npm`  | Node Package Manager — manages all project dependencies                                   |
+| `init` | Initializes a new Node.js project                                                         |
+| `-y`   | Short for `--yes` — automatically accepts all default settings and creates `package.json` |
 
 ### Dependencies Installed
 
@@ -64,20 +64,20 @@ npm init -y
 npm install express mariadb cors dotenv
 ```
 
-| Package | Purpose |
-|---|---|
-| `express` | Web framework for handling routes and HTTP requests |
-| `mariadb` | Database driver to connect and run SQL queries on MariaDB |
-| `cors` | Allows the frontend to communicate with the backend across different ports |
-| `dotenv` | Loads environment variables from `.env` file to keep passwords secure |
+| Package   | Purpose                                                                    |
+|-----------|----------------------------------------------------------------------------|
+| `express` | Web framework for handling routes and HTTP requests                        |
+| `mariadb` | Database driver to connect and run SQL queries on MariaDB                  |
+| `cors`    | Allows the frontend to communicate with the backend across different ports |
+| `dotenv`  | Loads environment variables from `.env` file to keep passwords secure      |
 
 ### Files Generated After Install
 
-| File / Folder | Purpose |
-|---|---|
-| `node_modules/` | Contains all downloaded library files — never committed to GitHub |
-| `package.json` | Lists all dependencies and project metadata |
-| `package-lock.json` | Locks exact versions for consistent environments across machines |
+| File / Folder       | Purpose                                                           |
+|---------------------|-------------------------------------------------------------------|
+| `node_modules/`     | Contains all downloaded library files — never committed to GitHub |
+| `package.json`      | Lists all dependencies and project metadata                       |
+| `package-lock.json` | Locks exact versions for consistent environments across machines  |
 
 ---
 
@@ -149,10 +149,10 @@ Open `frontend/index.html` directly in your browser. The frontend connects to th
 
 ## Common Errors & Fixes
 
-| Error | Cause | Fix |
-|---|---|---|
-| `DB Connection Error` | Wrong password in `.env` | Check `DB_PASS` in `.env` |
-| `Unknown database kt_impex` | Database not created | Run Step 4 again |
-| `Cannot find module` | Dependencies not installed | Run `npm install` in backend folder |
-| `Port 5000 already in use` | Another process using port 5000 | Change `PORT` in `.env` to `5001` |
-| `permission denied` | WSL file permission issue | Run `chmod +x` on the file |
+| Error                       | Cause                           | Fix                                 |
+|-----------------------------|---------------------------------|-------------------------------------|
+| `DB Connection Error`       | Wrong password in `.env`        | Check `DB_PASS` in `.env`           |
+| `Unknown database kt_impex` | Database not created            | Run Step 4 again                    |
+| `Cannot find module`        | Dependencies not installed      | Run `npm install` in backend folder |
+| `Port 5000 already in use`  | Another process using port 5000 | Change `PORT` in `.env` to `5001`   |
+| `permission denied`         | WSL file permission issue       | Run `chmod +x` on the file          |

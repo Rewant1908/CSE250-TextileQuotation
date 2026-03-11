@@ -8,12 +8,12 @@ This wiki contains detailed documentation explaining every part of the project i
 
 ## Wiki Pages
 
-| Page | What it covers |
-|---|---|
-| [Installation](Installation) | Complete setup guide, package setup, troubleshooting |
-| [Database](Database) | Schema design, table explanations, column decisions, relationships |
-| [Node JS](Node-JS) | Backend architecture, Express, endpoints, transactions, error handling |
-| [ES Modules and Vite Framework](ES-Modules-and-Vite-Framework) | What ES modules are and why they are used in this project |
+| Page                                                           | What it covers                                                         |
+|----------------------------------------------------------------|------------------------------------------------------------------------|
+| [Installation](Installation)                                   | Complete setup guide, package setup, troubleshooting                   |
+| [Database](Database)                                           | Schema design, table explanations, column decisions, relationships     |
+| [Node JS](Node-JS)                                             | Backend architecture, Express, endpoints, transactions, error handling |
+| [ES Modules and Vite Framework](ES-Modules-and-Vite-Framework) | What ES modules are and why they are used in this project              |
 
 ---
 

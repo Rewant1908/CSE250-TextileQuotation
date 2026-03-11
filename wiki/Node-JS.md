@@ -32,10 +32,10 @@ app.use(cors());
 app.use(express.json());
 ```
 
-| Middleware | Purpose |
-|---|---|
-| `cors()` | Allows the frontend (running on a different port) to call the backend API |
-| `express.json()` | Parses incoming JSON request bodies so we can read `req.body` |
+| Middleware       | Purpose                                                                   |
+|------------------|---------------------------------------------------------------------------|
+| `cors()`         | Allows the frontend (running on a different port) to call the backend API |
+| `express.json()` | Parses incoming JSON request bodies so we can read `req.body`             |
 
 ---
 
