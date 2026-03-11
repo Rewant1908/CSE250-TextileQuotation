@@ -1,0 +1,33 @@
+Index: .gitignore
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+--- /dev/null	(date 1773255440804)
++++ b/.gitignore	(date 1773255440804)
+@@ -0,0 +1,3 @@
++node_modules/
++backend/.env
++.env
+\ No newline at end of file
+Index: README.md
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+># Textile Quotation System (CSE250-DBMS)\r\n\r\n---\r\n\r\n## 1. Project Overview\r\n\r\nThe **Textile Quotation System** is a web-based application developed as part of **CSE250 – Database Management Systems** under **KT Impex**, a textile import and export business.\r\n\r\nThe system automates the process of generating quotations by allowing users to register customers, manage textile products, and generate accurate price quotations based on predefined rates and quantities — replacing manual methods to reduce errors and maintain consistent pricing records.\r\n\r\n---\r\n\r\n## 2. Features\r\n\r\n- **Product Catalogue** — View all textile products with category and base price\r\n- **Customer Registration** — Register new customers via enquiry form\r\n- **Quotation Generation** — Multi-item quotations with automatic GST (18%) calculation\r\n- **Price Snapshot** — Locks price at time of quote so future price changes do not affect old quotations\r\n- **Quotation History** — View all past quotations with grand totals and line items\r\n\r\n---\r\n\r\n## 3. Technology Stack\r\n\r\n| Layer | Technology |\r\n|---|---|\r\n| Database | MariaDB |\r\n| Backend | Node.js + Express.js |\r\n| Frontend | HTML, CSS, JavaScript |\r\n| Language | SQL, JavaScript |\r\n| Environment | Linux (WSL) |\r\n| Dev Tool | IntelliJ IDEA |\r\n| Version Control | GitHub |\r\n\r\n---\r\n\r\n## 4. Database Design\r\n\r\n### 4.1 Entities\r\n\r\n| Table | Description |\r\n|---|---|\r\n| `customers` | Stores customer name, contact phone and email |\r\n| `products` | Stores product name, category (Suiting/Shirting) and base price per metre |\r\n| `quotations` | Quotation header linked to a customer, stores total amount and created date |\r\n| `quotation_items` | Junction table linking quotations to products with quantity and price snapshot |\r\n\r\n### 4.2 Relationships\r\n\r\n- One **customer** can have many **quotations**\r\n- One **quotation** can have many **quotation items**\r\n- Each **quotation item** links to one **product**\r\n- `quotation_items` resolves the many-to-many relationship between `quotations` and `products`\r\n\r\n### 4.3 Entity Relationship Diagram\r\n\r\n![ERD](database/erd.png)\r\n\r\n---\r\n\r\n## 5. Project Structure\r\n\r\n```\r\nCSE250-TextileQuotation/\r\n├── backend/\r\n│   ├── server.js          ← Express server with all 5 API endpoints\r\n│   ├── db.js              ← MariaDB connection pool\r\n│   ├── .env               ← Environment variables (not committed)\r\n│   └── .env.example       ← Template for environment variables\r\n├── database/\r\n│   ├── schema.sql         ← All CREATE TABLE statements\r\n│   └── erd.png            ← Entity Relationship Diagram\r\n├── frontend/\r\n│   ├── index.html         ← Main HTML page\r\n│   ├── style.css          ← Stylesheet\r\n│   └── main.js            ← Frontend logic\r\n├── package.json\r\n└── README.md\r\n```\r\n\r\n---\r\n\r\n## 6. API Endpoints\r\n\r\n| Method | Endpoint | Description |\r\n|---|---|---|\r\n| `GET` | `/api/products` | Fetch all textile products |\r\n| `POST` | `/api/enquiry` | Register a new customer |\r\n| `POST` | `/api/create-quotation` | Create a new multi-item quotation |\r\n| `GET` | `/api/quotations` | Fetch all quotations with grand totals |\r\n| `GET` | `/api/quotations/:id` | Fetch single quotation with line items and GST breakdown |\r\n\r\n### Request / Response Examples\r\n\r\n**POST `/api/enquiry`**\r\n```json\r\n// Request\r\n{ \"customer_name\": \"Rajesh Textiles\", \"contact_phone\": \"9876543210\", \"email\": \"raj@example.com\" }\r\n\r\n// Response\r\n{ \"success\": true, \"customer_id\": 1 }\r\n```\r\n\r\n**POST `/api/create-quotation`**\r\n```json\r\n// Request\r\n{ \"customer_id\": 1, \"items\": [{ \"product_id\": 2, \"quantity\": 50 }] }\r\n\r\n// Response\r\n{ \"success\": true, \"quotation_id\": 1 }\r\n```\r\n\r\n**GET `/api/quotations/1`**\r\n```json\r\n// Response\r\n{\r\n  \"quotation_id\": 1,\r\n  \"customer_name\": \"Rajesh Textiles\",\r\n  \"total_amount\": 3750.00,\r\n  \"gst_18\": 675.00,\r\n  \"grand_total\": 4425.00,\r\n  \"created_at\": \"2026-03-11T11:00:00.000Z\",\r\n  \"items\": [\r\n    {\r\n      \"product_name\": \"Premium Wool Suiting\",\r\n      \"category\": \"Suiting\",\r\n      \"quantity\": 50,\r\n      \"unit_price_at_time\": 75.00,\r\n      \"line_total\": 3750.00\r\n    }\r\n  ]\r\n}\r\n```\r\n\r\n---\r\n\r\n## 7. Installation & Setup\r\n\r\n### Prerequisites\r\n- Node.js v18+\r\n- MariaDB\r\n- WSL (Linux) or Linux/macOS\r\n\r\n### Steps\r\n\r\n**1. Clone the repository**\r\n```bash\r\ngit clone https://github.com/Rewant1908/CSE250-TextileQuotation.git\r\ncd CSE250-TextileQuotation\r\n```\r\n\r\n**2. Install dependencies**\r\n```bash\r\ncd backend\r\nnpm install\r\n```\r\n\r\n**3. Set up the database**\r\n```bash\r\nmariadb -u root -p -e \"CREATE DATABASE kt_impex;\"\r\nmariadb -u root -p kt_impex < database/schema.sql\r\n```\r\n\r\n**4. Configure environment**\r\n```bash\r\ncp backend/.env.example backend/.env\r\n```\r\n\r\nEdit `.env` and fill in your credentials:\r\n```env\r\nDB_HOST=localhost\r\nDB_USER=root\r\nDB_PASS=your_password\r\nDB_NAME=kt_impex\r\nPORT=5000\r\n```\r\n\r\n**5. Start the server**\r\n```bash\r\ncd backend\r\nnpm start\r\n```\r\n\r\nServer runs on `http://localhost:5000`\r\n\r\n**6. Open the frontend**\r\n\r\nOpen `frontend/index.html` in your browser.\r\n\r\n---\r\n\r\n## 8. Course Information\r\n\r\n- **Course**: CSE250 – Database Management Systems\r\n- **Project**: Textile Quotation System\r\n- **Business**: KT Impex (Textile Import & Export)\r\n- **Database**: kt_impex
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/README.md b/README.md
+--- a/README.md	(revision 441e5a4429bfd5b4ae89935cc220b2f879b82105)
++++ b/README.md	(date 1773255406972)
+@@ -163,7 +163,7 @@
+ 
+ **4. Configure environment**
+ ```bash
+-cp backend/.env.example backend/.env
++cp backend/.env.example.example backend/.env.example
+ ```
+ 
+ Edit `.env` and fill in your credentials:
