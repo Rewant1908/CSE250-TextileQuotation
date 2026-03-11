@@ -1,79 +1,197 @@
 # Textile Quotation System (CSE250-DBMS)
 
 ---
+
 ## 1. Project Overview
 
-The **Textile Quotation System** is a simple web-based application developed as part of the **CSE250 – Database Management Systems** course.  
-The project aims to automate the process of generating quotations for textile import and export operations.
+The **Textile Quotation System** is a web-based application developed as part of **CSE250 – Database Management Systems** under **KT Impex**, a textile import and export business.
 
-This system allows users to manage textile products, enter order details, and generate accurate price quotations based on predefined rates and quantities.  
-By replacing manual quotation methods, the application helps reduce errors, improve efficiency, and maintain consistent pricing records.
-
-The project demonstrates the practical use of database concepts such as data storage, retrieval, and structured querying in a real-world business scenario.
-
-## 2. Features
-
-- **Product Management**  
-  Allows storage and management of textile product details such as name, type, and base price.
-
-- **Quotation Generation**  
-  Generates quotations based on selected products, quantities, and predefined pricing rules.
-
-- **Database Integration**  
-  Uses a relational database to store product information, quotations, and customer details.
-
-- **Data Retrieval and Queries**  
-  Implements SQL queries to fetch, insert, and update quotation-related data efficiently.
-
-- **User-Friendly Interface**  
-  Provides a simple and intuitive web interface for entering order details and viewing quotations.
-
-- **Error Reduction and Consistency**  
-  Reduces manual calculation errors and ensures consistent quotation results.
-
-## 3. Technology Used
-
-- **Database**: MariaDB
-- **Backend**: NodeJS with Express
-- **Frontend**: (HTML, CSS, JavaScript)
-- **Language**: SQL and JavaScript
-- **Environment**: Linux(WSL),
-- **Development Tool:** IntelliJ IDEA
-- **Version Control:** GitHub
-
-## 4. Database Design
-
-The database consists of the following main entities:
-
-- **Customer**: Stores customer details such as name and contact information.
-- **Product**: Stores textile product details including product name, type, and price.
-- **Quotation**: Represents a quotation generated for a customer.
-- **Quotation-Item**: A junction table to model the many-to-many relationship between quotations and products.
-Textile Quotation System (CSE250-DBMS)
-
-## 5. API Endpoints
-
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `GET` | `/api/products` | Fetch all available textile products. |
-| `POST` | `/api/enquiry` | Submit a new customer enquiry to the database. |
-| `POST` | `/api/create-quotation` | Generate a new multi-item quotation. |
+The system automates the process of generating quotations by allowing users to register customers, manage textile products, and generate accurate price quotations based on predefined rates and quantities — replacing manual methods to reduce errors and maintain consistent pricing records.
 
 ---
 
-## 6. Installation & Setup
-1. **Clone the Repo:** `git clone https://github.com`
-2. **Install Dependencies:** `npm install`
-3. **Environment Variables:** Create a `.env` file and add:
-   ```env
-   DB_HOST=localhost
-   DB_USER=root
-   DB_PASS=your_password
-   DB_NAME=kt_impex
-   PORT=5000
-Run Server: node server.js
+## 2. Features
 
+- **Product Catalogue** — View all textile products with category and base price
+- **Customer Registration** — Register new customers via enquiry form
+- **Quotation Generation** — Multi-item quotations with automatic GST (18%) calculation
+- **Price Snapshot** — Locks price at time of quote so future price changes do not affect old quotations
+- **Quotation History** — View all past quotations with grand totals and line items
 
+---
 
+## 3. Technology Stack
 
+| Layer | Technology |
+|---|---|
+| Database | MariaDB |
+| Backend | Node.js + Express.js |
+| Frontend | HTML, CSS, JavaScript |
+| Language | SQL, JavaScript |
+| Environment | Linux (WSL) |
+| Dev Tool | IntelliJ IDEA |
+| Version Control | GitHub |
 
+---
+
+## 4. Database Design
+
+### 4.1 Entities
+
+| Table | Description |
+|---|---|
+| `customers` | Stores customer name, contact phone and email |
+| `products` | Stores product name, category (Suiting/Shirting) and base price per metre |
+| `quotations` | Quotation header linked to a customer, stores total amount and created date |
+| `quotation_items` | Junction table linking quotations to products with quantity and price snapshot |
+
+### 4.2 Relationships
+
+- One **customer** can have many **quotations**
+- One **quotation** can have many **quotation items**
+- Each **quotation item** links to one **product**
+- `quotation_items` resolves the many-to-many relationship between `quotations` and `products`
+
+### 4.3 Entity Relationship Diagram
+
+![ERD](database/erd.png)
+
+---
+
+## 5. Project Structure
+
+```
+CSE250-TextileQuotation/
+├── backend/
+│   ├── server.js          ← Express server with all 5 API endpoints
+│   ├── db.js              ← MariaDB connection pool
+│   ├── .env               ← Environment variables (not committed)
+│   └── .env.example       ← Template for environment variables
+├── database/
+│   ├── schema.sql         ← All CREATE TABLE statements
+│   └── erd.png            ← Entity Relationship Diagram
+├── frontend/
+│   ├── index.html         ← Main HTML page
+│   ├── style.css          ← Stylesheet
+│   └── main.js            ← Frontend logic
+├── package.json
+└── README.md
+```
+
+---
+
+## 6. API Endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/products` | Fetch all textile products |
+| `POST` | `/api/enquiry` | Register a new customer |
+| `POST` | `/api/create-quotation` | Create a new multi-item quotation |
+| `GET` | `/api/quotations` | Fetch all quotations with grand totals |
+| `GET` | `/api/quotations/:id` | Fetch single quotation with line items and GST breakdown |
+
+### Request / Response Examples
+
+**POST `/api/enquiry`**
+```json
+// Request
+{ "customer_name": "Rajesh Textiles", "contact_phone": "9876543210", "email": "raj@example.com" }
+
+// Response
+{ "success": true, "customer_id": 1 }
+```
+
+**POST `/api/create-quotation`**
+```json
+// Request
+{ "customer_id": 1, "items": [{ "product_id": 2, "quantity": 50 }] }
+
+// Response
+{ "success": true, "quotation_id": 1 }
+```
+
+**GET `/api/quotations/1`**
+```json
+// Response
+{
+  "quotation_id": 1,
+  "customer_name": "Rajesh Textiles",
+  "total_amount": 3750.00,
+  "gst_18": 675.00,
+  "grand_total": 4425.00,
+  "created_at": "2026-03-11T11:00:00.000Z",
+  "items": [
+    {
+      "product_name": "Premium Wool Suiting",
+      "category": "Suiting",
+      "quantity": 50,
+      "unit_price_at_time": 75.00,
+      "line_total": 3750.00
+    }
+  ]
+}
+```
+
+---
+
+## 7. Installation & Setup
+
+### Prerequisites
+- Node.js v18+
+- MariaDB
+- WSL (Linux) or Linux/macOS
+
+### Steps
+
+**1. Clone the repository**
+```bash
+git clone https://github.com/Rewant1908/CSE250-TextileQuotation.git
+cd CSE250-TextileQuotation
+```
+
+**2. Install dependencies**
+```bash
+cd backend
+npm install
+```
+
+**3. Set up the database**
+```bash
+mariadb -u root -p -e "CREATE DATABASE kt_impex;"
+mariadb -u root -p kt_impex < database/schema.sql
+```
+
+**4. Configure environment**
+```bash
+cp backend/.env.example backend/.env
+```
+
+Edit `.env` and fill in your credentials:
+```env
+DB_HOST=localhost
+DB_USER=root
+DB_PASS=your_password
+DB_NAME=kt_impex
+PORT=5000
+```
+
+**5. Start the server**
+```bash
+cd backend
+npm start
+```
+
+Server runs on `http://localhost:5000`
+
+**6. Open the frontend**
+
+Open `frontend/index.html` in your browser.
+
+---
+
+## 8. Course Information
+
+- **Course**: CSE250 – Database Management Systems
+- **Project**: Textile Quotation System
+- **Business**: KT Impex (Textile Import & Export)
+- **Database**: kt_impex
