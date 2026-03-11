@@ -1,6 +1,6 @@
 import { createPool } from 'mariadb';
 import dotenv from 'dotenv';
-dotenv.config();
+dotenv.config({ path: './backend/.env' });
 
 const pool = createPool({
     host:            process.env.DB_HOST || 'localhost',
