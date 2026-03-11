@@ -6,19 +6,19 @@
   "main": "server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js"
+    "start": "node backend/server.js"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Rewant1908/CSE250_Project2_product_Enquiry_quotation_.git"
+    "url": "git+https://github.com/Rewant1908/CSE250-TextileQuotation.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/Rewant1908/CSE250_Project2_product_Enquiry_quotation_/issues"
+    "url": "https://github.com/Rewant1908/CSE250-TextileQuotation/issues"
   },
-  "homepage": "https://github.com/Rewant1908/CSE250_Project2_product_Enquiry_quotation_#readme",
+  "homepage": "https://github.com/Rewant1908/CSE250-TextileQuotation#readme",
   "dependencies": {
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",

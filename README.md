@@ -18,7 +18,7 @@ The system automates the process of generating quotations by allowing users to r
 - **Price Snapshot** — Locks price at time of quote so future price changes do not affect old quotations
 - **Quotation History** — View all past quotations with grand totals and line items
 
----
+----
 
 ## 3. Technology Stack
 
@@ -34,31 +34,7 @@ The system automates the process of generating quotations by allowing users to r
 
 ---
 
-## 4. Database Design
-
-### 4.1 Entities
-
-| Table | Description |
-|---|---|
-| `customers` | Stores customer name, contact phone and email |
-| `products` | Stores product name, category (Suiting/Shirting) and base price per metre |
-| `quotations` | Quotation header linked to a customer, stores total amount and created date |
-| `quotation_items` | Junction table linking quotations to products with quantity and price snapshot |
-
-### 4.2 Relationships
-
-- One **customer** can have many **quotations**
-- One **quotation** can have many **quotation items**
-- Each **quotation item** links to one **product**
-- `quotation_items` resolves the many-to-many relationship between `quotations` and `products`
-
-### 4.3 Entity Relationship Diagram
-
-![ERD](database/erd.png)
-
----
-
-## 5. Project Structure
+## 4. Project Structure
 
 ```
 CSE250-TextileQuotation/
@@ -80,7 +56,7 @@ CSE250-TextileQuotation/
 
 ---
 
-## 6. API Endpoints
+## 5. API Endpoints
 
 | Method | Endpoint | Description |
 |---|---|---|
@@ -134,7 +110,7 @@ CSE250-TextileQuotation/
 
 ---
 
-## 7. Installation & Setup
+## 6. Installation & Setup
 
 ### Prerequisites
 - Node.js v18+
@@ -151,7 +127,6 @@ cd CSE250-TextileQuotation
 
 **2. Install dependencies**
 ```bash
-cd backend
 npm install
 ```
 
@@ -177,7 +152,6 @@ PORT=5000
 
 **5. Start the server**
 ```bash
-cd backend
 npm start
 ```
 
@@ -189,7 +163,7 @@ Open `frontend/index.html` in your browser.
 
 ---
 
-## 8. Course Information
+## 7. Course Information
 
 - **Course**: CSE250 – Database Management Systems
 - **Project**: Textile Quotation System
