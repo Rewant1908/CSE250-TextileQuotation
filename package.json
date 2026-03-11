@@ -16,9 +16,9 @@
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/Rewant1908/CSE250_Project2_product_Enquiry_quotation_/issues"
+    "url": "https://github.com/Rewant1908/CSE250-TextileQuotation/issues"
   },
-  "homepage": "https://github.com/Rewant1908/CSE250_Project2_product_Enquiry_quotation_#readme",
+  "homepage": "https://github.com/Rewant1908/CSE250-TextileQuotation#readme",
   "dependencies": {
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
