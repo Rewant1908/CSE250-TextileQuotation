@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<project version="4">
-  <component name="DataSourcePerFileMappings">
-    <file url="file://$APPLICATION_CONFIG_DIR$/consoles/db/681beabc-dec8-47b4-a45c-ead296bfc845/console.sql" value="681beabc-dec8-47b4-a45c-ead296bfc845" />
-    <file url="file://$APPLICATION_CONFIG_DIR$/extensions/com.intellij.database/schema/server.js" value="681beabc-dec8-47b4-a45c-ead296bfc845" />
-    <file url="file://$PROJECT_DIR$/backend/database/schema.sql" value="681beabc-dec8-47b4-a45c-ead296bfc845" />
-    <file url="file://$PROJECT_DIR$/backend/server.js" value="681beabc-dec8-47b4-a45c-ead296bfc845" />
-  </component>
-</project>
