@@ -60,7 +60,7 @@ app.post('/api/create-quotation', async (req, res) => {
         conn = await pool.getConnection();
         await conn.beginTransaction();
 
-        // Insert quotation header
+        // Insert quotation header (total_amount starts at 0, trigger will update it)
         const result = await conn.query(
             `INSERT INTO quotations (customer_id) VALUES (?)`,
             [customer_id]
@@ -81,18 +81,6 @@ app.post('/api/create-quotation', async (req, res) => {
                 [quotation_id, item.product_id, item.quantity, product.base_price]
             );
         }
-
-        // Manually update total_amount after all items are inserted
-        await conn.query(
-            `UPDATE quotations
-             SET total_amount = (
-                 SELECT ROUND(SUM(quantity * unit_price_at_time), 2)
-                 FROM quotation_items
-                 WHERE quotation_id = ?
-             )
-             WHERE quotation_id = ?`,
-            [quotation_id, quotation_id]
-        );
 
         await conn.commit();
         res.status(201).json({ success: true, quotation_id });
