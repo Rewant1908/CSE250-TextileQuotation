@@ -195,3 +195,10 @@ Frontend runs on `http://localhost:5173` (Vite default)
 - **Project**: Textile Quotation System
 - **Business**: KT Impex (Textile Import & Export)
 - **Database**: kt_impex
+
+---
+
+## 8. Team Members
+- Rewant Agrawal
+- Vijay Kumar
+- Kishna Rana
