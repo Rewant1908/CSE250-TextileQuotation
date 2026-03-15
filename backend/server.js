@@ -3,8 +3,17 @@ import cors from 'cors';
 import pool from './db.js';
 
 const app = express();
-app.use(cors());
+
+// ─── Security: Restrict CORS to local frontend only ───────────────────────────
+app.use(cors({
+    origin: ['http://localhost:5000', 'http://127.0.0.1:5500', 'null'],
+    methods: ['GET', 'POST']
+}));
 app.use(express.json());
+
+// ─── Validation helpers ───────────────────────────────────────────────────────
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const phoneRegex = /^[0-9]{10}$/;
 
 // ─── 1. GET all products ──────────────────────────────────────────────────────
 app.get('/api/products', async (req, res) => {
@@ -26,16 +35,28 @@ app.get('/api/products', async (req, res) => {
 // Body: { customer_name, contact_phone, email }
 app.post('/api/enquiry', async (req, res) => {
     const { customer_name, contact_phone, email } = req.body;
-    if (!customer_name) {
+
+    // Input validation
+    if (!customer_name || customer_name.trim() === '') {
         return res.status(400).json({ error: 'customer_name is required' });
     }
+    if (customer_name.trim().length > 150) {
+        return res.status(400).json({ error: 'customer_name must be under 150 characters' });
+    }
+    if (email && !emailRegex.test(email)) {
+        return res.status(400).json({ error: 'Invalid email format' });
+    }
+    if (contact_phone && !phoneRegex.test(contact_phone)) {
+        return res.status(400).json({ error: 'Phone must be exactly 10 digits' });
+    }
+
     let conn;
     try {
         conn = await pool.getConnection();
         const result = await conn.query(
             `INSERT INTO customers (customer_name, contact_phone, email)
              VALUES (?, ?, ?)`,
-            [customer_name, contact_phone || null, email || null]
+            [customer_name.trim(), contact_phone || null, email || null]
         );
         res.status(201).json({
             success: true,
@@ -52,9 +73,24 @@ app.post('/api/enquiry', async (req, res) => {
 // Body: { customer_id: 1, items: [{ product_id: 2, quantity: 10 }, ...] }
 app.post('/api/create-quotation', async (req, res) => {
     const { customer_id, items } = req.body;
+
     if (!customer_id || !items || items.length === 0) {
         return res.status(400).json({ error: 'customer_id and items are required' });
     }
+
+    // Validate each item before touching the DB
+    for (const item of items) {
+        if (!item.product_id || !Number.isInteger(Number(item.product_id)) || Number(item.product_id) <= 0) {
+            return res.status(400).json({ error: `Invalid product_id: ${item.product_id}` });
+        }
+        if (!item.quantity || Number(item.quantity) <= 0) {
+            return res.status(400).json({ error: `Quantity must be greater than 0` });
+        }
+        if (Number(item.quantity) > 100000) {
+            return res.status(400).json({ error: `Quantity too large for product_id: ${item.product_id}` });
+        }
+    }
+
     let conn;
     try {
         conn = await pool.getConnection();
@@ -133,6 +169,11 @@ app.get('/api/quotations', async (req, res) => {
 
 // ─── 5. GET single quotation with all its items ───────────────────────────────
 app.get('/api/quotations/:id', async (req, res) => {
+    const quotationId = Number(req.params.id);
+    if (!Number.isInteger(quotationId) || quotationId <= 0) {
+        return res.status(400).json({ error: 'Invalid quotation ID' });
+    }
+
     let conn;
     try {
         conn = await pool.getConnection();
@@ -151,7 +192,7 @@ app.get('/api/quotations/:id', async (req, res) => {
              FROM quotations q
              JOIN customers c ON q.customer_id = c.customer_id
              WHERE q.quotation_id = ?`,
-            [req.params.id]
+            [quotationId]
         );
         if (!quotation) return res.status(404).json({ error: 'Quotation not found' });
 
@@ -166,7 +207,7 @@ app.get('/api/quotations/:id', async (req, res) => {
              FROM quotation_items qi
              JOIN products p ON qi.product_id = p.product_id
              WHERE qi.quotation_id = ?`,
-            [req.params.id]
+            [quotationId]
         );
 
         res.json({ ...quotation, items });
