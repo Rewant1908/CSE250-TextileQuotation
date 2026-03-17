@@ -198,7 +198,7 @@ Frontend runs on `http://localhost:5173` (Vite default)
 
 ---
 
-## 8. Team Members
+## 9. Team Members
 - Rewant Agrawal
 - Vijay Kumar
 - Kishna Rana
