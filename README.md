@@ -66,7 +66,23 @@ CSE250-TextileQuotation/
 
 ---
 
-## 5. API Endpoints
+## 5. Frontend Architecture
+
+The frontend is built as a **React single-page application** powered by **Vite**.
+
+| Component | Purpose |
+|---|---|
+| `App.jsx` | Root component — manages tab navigation between all 4 views |
+| `ProductCatalogue.jsx` | Fetches and displays all products with category badges and prices |
+| `CustomerForm.jsx` | Registration form with frontend and backend validation |
+| `QuotationForm.jsx` | Multi-item quotation builder with live GST preview |
+| `QuotationHistory.jsx` | Lists all quotations with expandable line item detail view |
+
+Each component uses `fetch()` to call the backend API at `http://localhost:5000`. State is managed using React `useState` and `useEffect` hooks.
+
+---
+
+## 6. API Endpoints
 
 | Method | Endpoint | Description |
 |---|---|---|
@@ -120,7 +136,7 @@ CSE250-TextileQuotation/
 
 ---
 
-## 6. Installation & Setup
+## 7. Installation & Setup
 
 ### Prerequisites
 - Node.js v18+
@@ -179,7 +195,7 @@ Frontend runs on `http://localhost:5173` (Vite default)
 
 ---
 
-## 7. Security Features
+## 8. Security Features
 
 - **CORS restricted** — Only local frontend origins are allowed
 - **Input validation** — Email format, 10-digit phone number, name length enforced
@@ -189,7 +205,7 @@ Frontend runs on `http://localhost:5173` (Vite default)
 
 ---
 
-## 8. Course Information
+## 9. Course Information
 
 - **Course**: CSE250 – Database Management Systems
 - **Project**: Textile Quotation System
@@ -198,7 +214,7 @@ Frontend runs on `http://localhost:5173` (Vite default)
 
 ---
 
-## 9. Team Members
+## 10. Team Members
 - Rewant Agrawal
 - Vijay Kumar
 - Kishna Rana
