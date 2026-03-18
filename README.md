@@ -37,7 +37,15 @@ The system automates the process of generating quotations by allowing users to r
 
 ---
 
-## 4. Project Structure
+## 4. Database Design
+
+The system uses a **MariaDB** relational database (`kt_impex`) with 4 tables — `customers`, `products`, `quotations`, and `quotation_items`.
+
+![ERD](database/erd.png)
+
+---
+
+## 5. Project Structure
 
 ```
 CSE250-TextileQuotation/
@@ -48,7 +56,8 @@ CSE250-TextileQuotation/
 │   └── .env.example       ← Template for environment variables
 ├── database/
 │   ├── schema.sql         ← All CREATE TABLE statements
-│   └── seed.sql           ← Sample product data (6 textile products)
+│   ├── seed.sql           ← Sample product data (6 textile products)
+│   └── erd.png            ← Entity Relationship Diagram
 ├── frontend/
 │   ├── src/
 │   │   ├── components/
@@ -66,23 +75,13 @@ CSE250-TextileQuotation/
 
 ---
 
-## 5. Frontend Architecture
+## 6. Frontend Architecture
 
-The frontend is built as a **React single-page application** powered by **Vite**.
-
-| Component | Purpose |
-|---|---|
-| `App.jsx` | Root component — manages tab navigation between all 4 views |
-| `ProductCatalogue.jsx` | Fetches and displays all products with category badges and prices |
-| `CustomerForm.jsx` | Registration form with frontend and backend validation |
-| `QuotationForm.jsx` | Multi-item quotation builder with live GST preview |
-| `QuotationHistory.jsx` | Lists all quotations with expandable line item detail view |
-
-Each component uses `fetch()` to call the backend API at `http://localhost:5000`. State is managed using React `useState` and `useEffect` hooks.
+Built with **React + Vite**. The app has 4 components — `ProductCatalogue`, `CustomerForm`, `QuotationForm`, and `QuotationHistory` — managed via tab navigation in `App.jsx`.
 
 ---
 
-## 6. API Endpoints
+## 7. API Endpoints
 
 | Method | Endpoint | Description |
 |---|---|---|
@@ -121,81 +120,30 @@ Each component uses `fetch()` to call the backend API at `http://localhost:5000`
   "total_amount": 32500.00,
   "gst_18": 5850.00,
   "grand_total": 38350.00,
-  "created_at": "2026-03-11T11:00:00.000Z",
-  "items": [
-    {
-      "product_name": "Premium Cotton Suiting",
-      "category": "Suiting",
-      "quantity": 50,
-      "unit_price_at_time": 650.00,
-      "line_total": 32500.00
-    }
-  ]
+  "items": [{ "product_name": "Premium Cotton Suiting", "quantity": 50, "line_total": 32500.00 }]
 }
 ```
 
 ---
 
-## 7. Installation & Setup
+## 8. Installation & Setup
 
-### Prerequisites
-- Node.js v18+
-- MariaDB
-- WSL (Linux) or Linux/macOS
-
-### Steps
-
-**1. Clone the repository**
 ```bash
 git clone https://github.com/Rewant1908/CSE250-TextileQuotation.git
 cd CSE250-TextileQuotation
+
+# Terminal 1 — Backend
+npm install && npm start
+
+# Terminal 2 — Frontend
+cd frontend && npm install && npm run dev
 ```
 
-**2. Install dependencies**
-```bash
-npm install
-```
-
-**3. Set up the database**
-```bash
-mariadb -u root -p -e "CREATE DATABASE kt_impex;"
-mariadb -u root -p kt_impex < database/schema.sql
-mariadb -u root -p kt_impex < database/seed.sql
-```
-
-**4. Configure environment**
-```bash
-cp backend/.env.example backend/.env
-```
-
-Edit `.env` and fill in your credentials:
-```env
-DB_HOST=localhost
-DB_USER=root
-DB_PASS=your_password
-DB_NAME=kt_impex
-PORT=5000
-```
-
-**5. Start the backend server**
-```bash
-npm start
-```
-
-Backend runs on `http://localhost:5000`
-
-**6. Start the frontend (in a separate terminal)**
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Frontend runs on `http://localhost:5173` (Vite default)
+Open `http://localhost:5173` in your browser.
 
 ---
 
-## 8. Security Features
+## 9. Security Features
 
 - **CORS restricted** — Only local frontend origins are allowed
 - **Input validation** — Email format, 10-digit phone number, name length enforced
@@ -205,7 +153,7 @@ Frontend runs on `http://localhost:5173` (Vite default)
 
 ---
 
-## 9. Course Information
+## 10. Course Information
 
 - **Course**: CSE250 – Database Management Systems
 - **Project**: Textile Quotation System
@@ -214,7 +162,8 @@ Frontend runs on `http://localhost:5173` (Vite default)
 
 ---
 
-## 10. Team Members
+## 11. Team Members
+
 - Rewant Agrawal
 - Vijay Kumar
 - Kishna Rana
