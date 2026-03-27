@@ -34,6 +34,24 @@ const AUTH_PASSWORD = process.env.AUTH_PASSWORD;
 const JWT_SECRET = process.env.JWT_SECRET;
 const TOKEN_EXPIRY = '8h';
 
+// ─── Basic login rate limiting (per IP) ────────────────────────────────────────
+const loginAttempts = new Map();
+const MAX_ATTEMPTS = 10;
+const WINDOW_MS = 60 * 1000;
+
+const loginRateLimiter = (req, res, next) => {
+    const key = req.ip || 'unknown';
+    const now = Date.now();
+    const attempts = loginAttempts.get(key) || [];
+    const recent = attempts.filter(ts => now - ts < WINDOW_MS);
+    if (recent.length >= MAX_ATTEMPTS) {
+        return res.status(429).json({ error: 'Too many login attempts. Please try again later.' });
+    }
+    recent.push(now);
+    loginAttempts.set(key, recent);
+    next();
+};
+
 const timingSafeEqualStrings = (a, b) => {
     if (typeof a !== 'string' || typeof b !== 'string') return false;
     try {
@@ -47,7 +65,7 @@ const timingSafeEqualStrings = (a, b) => {
 
 // ─── Login endpoint ───────────────────────────────────────────────────────────
 // Body: { username, password }
-app.post('/api/login', (req, res) => {
+app.post('/api/login', loginRateLimiter, (req, res) => {
     const { username, password } = req.body || {};
     if (!username || !password) {
         return res.status(400).json({ error: 'Username and password are required' });
