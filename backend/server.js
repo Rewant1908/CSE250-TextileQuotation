@@ -5,6 +5,7 @@ import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import rateLimit from 'express-rate-limit';
 import pool from './db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -34,27 +35,23 @@ const AUTH_PASSWORD = process.env.AUTH_PASSWORD;
 const JWT_SECRET = process.env.JWT_SECRET;
 const TOKEN_EXPIRY = '8h';
 
-// ─── Basic login rate limiting (per IP) ────────────────────────────────────────
-const loginAttempts = new Map();
-const MAX_ATTEMPTS = 10;
-const WINDOW_MS = 60 * 1000;
+// ─── Rate limiting ─────────────────────────────────────────────────────────────
+const loginRateLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many login attempts. Please try again later.' }
+});
 
-const loginRateLimiter = (req, res, next) => {
-    const key = req.ip || 'unknown';
-    const now = Date.now();
-    const attempts = loginAttempts.get(key) || [];
-    const recent = attempts.filter(ts => now - ts < WINDOW_MS);
-    if (recent.length >= MAX_ATTEMPTS) {
-        return res.status(429).json({ error: 'Too many login attempts. Please try again later.' });
-    }
-    recent.push(now);
-    loginAttempts.set(key, recent);
-    next();
-};
-
-const authGateAttempts = new Map();
-const AUTH_MAX_ATTEMPTS = 300;
-const AUTH_WINDOW_MS = 60 * 1000;
+const authRateLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 300,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: (req) => req.path === '/login',
+    message: { error: 'Rate limit exceeded. Slow down requests.' }
+});
 
 const timingSafeEqualStrings = (a, b) => {
     if (typeof a !== 'string' || typeof b !== 'string') return false;
@@ -88,16 +85,6 @@ app.post('/api/login', loginRateLimiter, (req, res) => {
 
 // ─── Authentication middleware ────────────────────────────────────────────────
 const requireAuth = (req, res, next) => {
-    const key = req.ip || 'unknown';
-    const now = Date.now();
-    const attempts = authGateAttempts.get(key) || [];
-    const recent = attempts.filter(ts => now - ts < AUTH_WINDOW_MS);
-    if (recent.length >= AUTH_MAX_ATTEMPTS) {
-        return res.status(429).json({ error: 'Rate limit exceeded. Slow down requests.' });
-    }
-    recent.push(now);
-    authGateAttempts.set(key, recent);
-
     const header = req.headers.authorization;
     if (!header || !header.startsWith('Bearer ')) {
         return res.status(401).json({ error: 'Unauthorized' });
@@ -111,6 +98,7 @@ const requireAuth = (req, res, next) => {
     }
 };
 
+app.use('/api', authRateLimiter);
 app.use('/api', requireAuth);
 
 // ─── Validation helpers ───────────────────────────────────────────────────────
