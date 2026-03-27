@@ -16,9 +16,19 @@ app.use(cors({
 }));
 app.use(express.json());
 
-const AUTH_USERNAME = process.env.AUTH_USERNAME || 'admin';
-const AUTH_PASSWORD = process.env.AUTH_PASSWORD || 'admin@123';
-const JWT_SECRET = process.env.JWT_SECRET || 'change-me-please';
+const missingEnv = [];
+if (!process.env.AUTH_USERNAME) missingEnv.push('AUTH_USERNAME');
+if (!process.env.AUTH_PASSWORD) missingEnv.push('AUTH_PASSWORD');
+if (!process.env.JWT_SECRET)    missingEnv.push('JWT_SECRET');
+
+if (missingEnv.length) {
+    console.error(`Missing required auth env vars: ${missingEnv.join(', ')}`);
+    process.exit(1);
+}
+
+const AUTH_USERNAME = process.env.AUTH_USERNAME;
+const AUTH_PASSWORD = process.env.AUTH_PASSWORD;
+const JWT_SECRET = process.env.JWT_SECRET;
 const TOKEN_EXPIRY = '8h';
 
 const timingSafeEqualStrings = (a, b) => {

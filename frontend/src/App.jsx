@@ -33,10 +33,6 @@ function App() {
         localStorage.removeItem('authUser')
     }, [])
 
-    const handleAuthError = useCallback(() => {
-        handleLogout()
-    }, [handleLogout])
-
     const authenticatedContent = useMemo(() => (
         <>
             <nav className="tabs">
@@ -52,13 +48,13 @@ function App() {
             </nav>
 
             <main className="content">
-                {activeTab === 0 && <ProductCatalogue token={token} apiBase={API_BASE} onAuthError={handleAuthError} />}
-                {activeTab === 1 && <CustomerForm token={token} apiBase={API_BASE} onAuthError={handleAuthError} />}
-                {activeTab === 2 && <QuotationForm token={token} apiBase={API_BASE} onAuthError={handleAuthError} />}
-                {activeTab === 3 && <QuotationHistory token={token} apiBase={API_BASE} onAuthError={handleAuthError} />}
+                {activeTab === 0 && <ProductCatalogue token={token} apiBase={API_BASE} onAuthError={handleLogout} />}
+                {activeTab === 1 && <CustomerForm token={token} apiBase={API_BASE} onAuthError={handleLogout} />}
+                {activeTab === 2 && <QuotationForm token={token} apiBase={API_BASE} onAuthError={handleLogout} />}
+                {activeTab === 3 && <QuotationHistory token={token} apiBase={API_BASE} onAuthError={handleLogout} />}
             </main>
         </>
-    ), [activeTab, handleAuthError, token])
+    ), [activeTab, handleLogout, token])
 
     if (!token) {
         return (
