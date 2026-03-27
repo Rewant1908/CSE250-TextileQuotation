@@ -3,9 +3,12 @@ import cors from 'cors';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import pool from './db.js';
 
-dotenv.config({ path: './backend/.env' });
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(__dirname, '.env') });
 
 const app = express();
 
@@ -34,14 +37,9 @@ const TOKEN_EXPIRY = '8h';
 const timingSafeEqualStrings = (a, b) => {
     if (typeof a !== 'string' || typeof b !== 'string') return false;
     try {
-        const aBuf = Buffer.from(a);
-        const bBuf = Buffer.from(b);
-        const maxLen = Math.max(aBuf.length, bBuf.length);
-        const paddedA = Buffer.alloc(maxLen);
-        const paddedB = Buffer.alloc(maxLen);
-        aBuf.copy(paddedA);
-        bBuf.copy(paddedB);
-        return crypto.timingSafeEqual(paddedA, paddedB) && aBuf.length === bBuf.length;
+        const hashA = crypto.createHash('sha256').update(a).digest();
+        const hashB = crypto.createHash('sha256').update(b).digest();
+        return crypto.timingSafeEqual(hashA, hashB);
     } catch {
         return false;
     }
@@ -81,12 +79,7 @@ const requireAuth = (req, res, next) => {
     }
 };
 
-const openApiPaths = new Set(['/api/login']);
-app.use('/api', (req, res, next) => {
-    const fullPath = req.originalUrl.split('?')[0];
-    if (openApiPaths.has(fullPath)) return next();
-    return requireAuth(req, res, next);
-});
+app.use('/api', requireAuth);
 
 // ─── Validation helpers ───────────────────────────────────────────────────────
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
