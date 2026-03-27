@@ -17,6 +17,10 @@ function App() {
         const stored = localStorage.getItem('authUser')
         return stored ? JSON.parse(stored) : null
     })
+    const avatarInitial = useMemo(() => {
+        const source = user?.username || 'KTI'
+        return source.length ? source[0].toUpperCase() : 'K'
+    }, [user])
 
     const handleLogin = (sessionToken, authUser) => {
         setToken(sessionToken)
@@ -103,12 +107,7 @@ function App() {
                     </div>
                 </div>
                 <div className="user-chip">
-                    <div className="avatar">
-                        {(() => {
-                            const source = user?.username || 'KTI';
-                            return source.length ? source[0].toUpperCase() : 'K';
-                        })()}
-                    </div>
+                    <div className="avatar">{avatarInitial}</div>
                     <div className="user-meta">
                         <span className="user-name">{user?.username || 'Session'}</span>
                         <span className="user-role">Administrator</span>

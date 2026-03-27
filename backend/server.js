@@ -73,9 +73,10 @@ const requireAuth = (req, res, next) => {
     }
 };
 
-const openApiPaths = new Set(['/login']);
+const openApiPaths = new Set(['/api/login']);
 app.use('/api', (req, res, next) => {
-    if (openApiPaths.has(req.path)) return next();
+    const fullPath = req.originalUrl.split('?')[0];
+    if (openApiPaths.has(fullPath)) return next();
     return requireAuth(req, res, next);
 });
 
