@@ -52,6 +52,23 @@ const loginRateLimiter = (req, res, next) => {
     next();
 };
 
+const authGateAttempts = new Map();
+const AUTH_MAX_ATTEMPTS = 300;
+const AUTH_WINDOW_MS = 60 * 1000;
+
+const authGuardRateLimiter = (req, res, next) => {
+    const key = req.ip || 'unknown';
+    const now = Date.now();
+    const attempts = authGateAttempts.get(key) || [];
+    const recent = attempts.filter(ts => now - ts < AUTH_WINDOW_MS);
+    if (recent.length >= AUTH_MAX_ATTEMPTS) {
+        return res.status(429).json({ error: 'Rate limit exceeded. Slow down requests.' });
+    }
+    recent.push(now);
+    authGateAttempts.set(key, recent);
+    next();
+};
+
 const timingSafeEqualStrings = (a, b) => {
     if (typeof a !== 'string' || typeof b !== 'string') return false;
     try {
@@ -99,7 +116,7 @@ const requireAuth = (req, res, next) => {
 
 app.use('/api', (req, res, next) => {
     if (req.path === '/login') return next();
-    return requireAuth(req, res, next);
+    return authGuardRateLimiter(req, res, () => requireAuth(req, res, next));
 });
 
 // ─── Validation helpers ───────────────────────────────────────────────────────
