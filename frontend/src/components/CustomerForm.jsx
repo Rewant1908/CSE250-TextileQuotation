@@ -1,8 +1,6 @@
 import { useState } from 'react'
 
-const API = 'http://localhost:5000'
-
-export default function CustomerForm() {
+export default function CustomerForm({ token, apiBase, onAuthError }) {
     const [form, setForm] = useState({ customer_name: '', contact_phone: '', email: '' })
     const [toast, setToast] = useState(null)
     const [loading, setLoading] = useState(false)
@@ -17,11 +15,18 @@ export default function CustomerForm() {
         if (!form.customer_name.trim()) return showToast('Customer name is required.', 'error')
         setLoading(true)
         try {
-            const res = await fetch(`${API}/api/enquiry`, {
+            const res = await fetch(`${apiBase}/api/enquiry`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`
+                },
                 body: JSON.stringify(form)
             })
+            if (res.status === 401) {
+                onAuthError()
+                return
+            }
             const data = await res.json()
             if (data.success) {
                 showToast(`Customer registered! ID: ${data.customer_id}`, 'success')
@@ -37,7 +42,13 @@ export default function CustomerForm() {
 
     return (
         <div className="card">
-            <h2>👤 Register Customer</h2>
+            <div className="card-heading">
+                <div>
+                    <p className="eyebrow">New client intake</p>
+                    <h2>👤 Register Customer</h2>
+                </div>
+                <span className="pill">KYC Lite</span>
+            </div>
             {toast && <div className={`toast toast-${toast.type}`}>{toast.msg}</div>}
             <form onSubmit={handleSubmit}>
                 <div className="form-grid">

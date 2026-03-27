@@ -1,6 +1,15 @@
 import express from 'express';
 import cors from 'cors';
+import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import rateLimit from 'express-rate-limit';
 import pool from './db.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(__dirname, '.env') });
 
 const app = express();
 
@@ -10,6 +19,87 @@ app.use(cors({
     methods: ['GET', 'POST']
 }));
 app.use(express.json());
+
+const missingEnv = [];
+if (!process.env.AUTH_USERNAME) missingEnv.push('AUTH_USERNAME');
+if (!process.env.AUTH_PASSWORD) missingEnv.push('AUTH_PASSWORD');
+if (!process.env.JWT_SECRET)    missingEnv.push('JWT_SECRET');
+
+if (missingEnv.length) {
+    console.error(`Missing required auth env vars: ${missingEnv.join(', ')}`);
+    process.exit(1);
+}
+
+const AUTH_USERNAME = process.env.AUTH_USERNAME;
+const AUTH_PASSWORD = process.env.AUTH_PASSWORD;
+const JWT_SECRET = process.env.JWT_SECRET;
+const TOKEN_EXPIRY = '8h';
+
+// ─── Rate limiting ─────────────────────────────────────────────────────────────
+const loginRateLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many login attempts. Please try again later.' }
+});
+
+const authRateLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 300,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: (req) => req.path === '/login',
+    message: { error: 'Rate limit exceeded. Slow down requests.' }
+});
+
+const timingSafeEqualStrings = (a, b) => {
+    if (typeof a !== 'string' || typeof b !== 'string') return false;
+    try {
+        const hashA = crypto.createHash('sha256').update(a).digest();
+        const hashB = crypto.createHash('sha256').update(b).digest();
+        return crypto.timingSafeEqual(hashA, hashB);
+    } catch {
+        return false;
+    }
+};
+
+// ─── Login endpoint ───────────────────────────────────────────────────────────
+// Body: { username, password }
+app.post('/api/login', loginRateLimiter, (req, res) => {
+    const { username, password } = req.body || {};
+    if (!username || !password) {
+        return res.status(400).json({ error: 'Username and password are required' });
+    }
+
+    const usernameValid = timingSafeEqualStrings(username, AUTH_USERNAME);
+    const passwordValid = timingSafeEqualStrings(password, AUTH_PASSWORD);
+
+    if (!usernameValid || !passwordValid) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const token = jwt.sign({ username }, JWT_SECRET, { expiresIn: TOKEN_EXPIRY });
+    res.json({ token, user: { username } });
+});
+
+// ─── Authentication middleware ────────────────────────────────────────────────
+const requireAuth = (req, res, next) => {
+    const header = req.headers.authorization;
+    if (!header || !header.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const token = header.replace('Bearer ', '');
+    try {
+        req.user = jwt.verify(token, JWT_SECRET);
+        next();
+    } catch (err) {
+        return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+};
+
+app.use('/api', authRateLimiter);
+app.use('/api', requireAuth);
 
 // ─── Validation helpers ───────────────────────────────────────────────────────
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

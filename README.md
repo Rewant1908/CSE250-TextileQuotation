@@ -141,6 +141,14 @@ cd frontend && npm install && npm run dev
 
 Open `http://localhost:5173` in your browser.
 
+### Authentication (new)
+- Backend uses static admin credentials from environment (see `backend/.env.example` for sample values). Set strong, unique secrets in production:
+  - `AUTH_USERNAME`
+  - `AUTH_PASSWORD`
+  - `JWT_SECRET`
+- Obtain a token via `POST /api/login { username, password }`. All other `/api/*` routes require a `Bearer` token.
+- Frontend reads `VITE_API_URL` (optional) for the backend base URL; defaults to `http://localhost:5000`.
+
 ---
 
 ## 9. Security Features
