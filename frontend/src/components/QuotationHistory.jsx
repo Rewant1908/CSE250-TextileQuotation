@@ -1,24 +1,43 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 
-const API = 'http://localhost:5000'
-
-export default function QuotationHistory() {
+export default function QuotationHistory({ token, apiBase, onAuthError }) {
     const [quotations, setQuotations] = useState([])
     const [loading, setLoading] = useState(true)
     const [selected, setSelected] = useState(null)
     const [detail, setDetail] = useState(null)
 
     useEffect(() => {
-        fetch(`${API}/api/quotations`)
-            .then(r => r.json())
-            .then(data => { setQuotations(data); setLoading(false) })
-            .catch(() => setLoading(false))
-    }, [])
+        if (!token) return
+        const controller = new AbortController()
+        const load = async () => {
+            try {
+                const res = await fetch(`${apiBase}/api/quotations`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                    signal: controller.signal
+                })
+                if (res.status === 401) return onAuthError()
+                const data = await res.json()
+                setQuotations(data)
+            } catch {
+                // state handles
+            } finally {
+                setLoading(false)
+            }
+        }
+        load()
+        return () => controller.abort()
+    }, [apiBase, token, onAuthError])
 
     const viewDetail = async (id) => {
         if (selected === id) { setSelected(null); setDetail(null); return }
         setSelected(id)
-        const res = await fetch(`${API}/api/quotations/${id}`)
+        const res = await fetch(`${apiBase}/api/quotations/${id}`, {
+            headers: { Authorization: `Bearer ${token}` }
+        })
+        if (res.status === 401) {
+            onAuthError()
+            return
+        }
         const data = await res.json()
         setDetail(data)
     }
@@ -27,7 +46,13 @@ export default function QuotationHistory() {
 
     return (
         <div className="card">
-            <h2>🧾 Quotation History</h2>
+            <div className="card-heading">
+                <div>
+                    <p className="eyebrow">Audit-ready history</p>
+                    <h2>🧾 Quotation History</h2>
+                </div>
+                <span className="pill neutral">Read only</span>
+            </div>
             <table>
                 <thead>
                 <tr>
@@ -43,8 +68,8 @@ export default function QuotationHistory() {
                 </thead>
                 <tbody>
                 {quotations.map(q => (
-                    <>
-                        <tr key={q.quotation_id}>
+                    <Fragment key={q.quotation_id}>
+                        <tr>
                             <td>#{q.quotation_id}</td>
                             <td>{q.customer_name}</td>
                             <td>{q.contact_phone || '—'}</td>
@@ -59,7 +84,7 @@ export default function QuotationHistory() {
                             </td>
                         </tr>
                         {selected === q.quotation_id && detail && (
-                            <tr key={`detail-${q.quotation_id}`}>
+                            <tr>
                                 <td colSpan="8">
                                     <div className="detail-panel">
                                         <h3>Line Items — Quotation #{detail.quotation_id}</h3>
@@ -75,7 +100,7 @@ export default function QuotationHistory() {
                                             </thead>
                                             <tbody>
                                             {detail.items.map((item, i) => (
-                                                <tr key={i}>
+                                                <tr key={`${detail.quotation_id}-${i}`}>
                                                     <td>{item.product_name}</td>
                                                     <td>
                                 <span className={`badge badge-${item.category.toLowerCase()}`}>
@@ -93,12 +118,12 @@ export default function QuotationHistory() {
                                 </td>
                             </tr>
                         )}
-                    </>
+                    </Fragment>
                 ))}
                 </tbody>
             </table>
             {quotations.length === 0 && (
-                <p style={{ color: '#94a3b8', textAlign: 'center', padding: '20px' }}>No quotations yet.</p>
+                <p className="empty-state">No quotations yet.</p>
             )}
         </div>
     )

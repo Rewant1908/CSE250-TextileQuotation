@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react'
 
-const API = 'http://localhost:5000'
-
-export default function QuotationForm() {
+export default function QuotationForm({ token, apiBase, onAuthError }) {
     const [products, setProducts] = useState([])
     const [customerId, setCustomerId] = useState('')
     const [items, setItems] = useState([{ product_id: '', quantity: '' }])
@@ -10,10 +8,24 @@ export default function QuotationForm() {
     const [loading, setLoading] = useState(false)
 
     useEffect(() => {
-        fetch(`${API}/api/products`)
-            .then(r => r.json())
-            .then(setProducts)
-    }, [])
+        if (!token) return
+        const controller = new AbortController()
+        const load = async () => {
+            try {
+                const res = await fetch(`${apiBase}/api/products`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                    signal: controller.signal
+                })
+                if (res.status === 401) return onAuthError()
+                const data = await res.json()
+                setProducts(data)
+            } catch {
+                // noop
+            }
+        }
+        load()
+        return () => controller.abort()
+    }, [apiBase, token, onAuthError])
 
     const showToast = (msg, type) => {
         setToast({ msg, type })
@@ -45,9 +57,12 @@ export default function QuotationForm() {
         if (validItems.length === 0) return showToast('Add at least one product with quantity.', 'error')
         setLoading(true)
         try {
-            const res = await fetch(`${API}/api/create-quotation`, {
+            const res = await fetch(`${apiBase}/api/create-quotation`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`
+                },
                 body: JSON.stringify({
                     customer_id: Number(customerId),
                     items: validItems.map(i => ({
@@ -56,6 +71,10 @@ export default function QuotationForm() {
                     }))
                 })
             })
+            if (res.status === 401) {
+                onAuthError()
+                return
+            }
             const data = await res.json()
             if (data.success) {
                 showToast(`Quotation #${data.quotation_id} created successfully!`, 'success')
@@ -72,7 +91,13 @@ export default function QuotationForm() {
 
     return (
         <div className="card">
-            <h2>📋 Create Quotation</h2>
+            <div className="card-heading">
+                <div>
+                    <p className="eyebrow">Quick quote builder</p>
+                    <h2>📋 Create Quotation</h2>
+                </div>
+                <span className="pill success">GST Ready</span>
+            </div>
             {toast && <div className={`toast toast-${toast.type}`}>{toast.msg}</div>}
             <form onSubmit={handleSubmit}>
                 <div className="form-group" style={{ marginBottom: '20px', maxWidth: '300px' }}>
@@ -84,7 +109,7 @@ export default function QuotationForm() {
                         onChange={e => setCustomerId(e.target.value)}
                     />
                 </div>
-                <label style={{ fontSize: '13px', color: '#94a3b8' }}>Products</label>
+                <label className="eyebrow">Products</label>
                 <div className="items-list">
                     {items.map((item, i) => (
                         <div className="item-row" key={i}>

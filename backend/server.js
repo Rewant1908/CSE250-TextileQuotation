@@ -1,6 +1,11 @@
 import express from 'express';
 import cors from 'cors';
+import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
+import dotenv from 'dotenv';
 import pool from './db.js';
+
+dotenv.config({ path: './backend/.env' });
 
 const app = express();
 
@@ -10,6 +15,53 @@ app.use(cors({
     methods: ['GET', 'POST']
 }));
 app.use(express.json());
+
+const AUTH_USERNAME = process.env.AUTH_USERNAME || 'admin';
+const AUTH_PASSWORD = process.env.AUTH_PASSWORD || 'admin@123';
+const JWT_SECRET = process.env.JWT_SECRET || 'change-me-please';
+const TOKEN_EXPIRY = '8h';
+
+const timingSafeEqualStrings = (a, b) => {
+    const aBuf = Buffer.from(a);
+    const bBuf = Buffer.from(b);
+    return aBuf.length === bBuf.length && crypto.timingSafeEqual(aBuf, bBuf);
+};
+
+// ─── Login endpoint ───────────────────────────────────────────────────────────
+// Body: { username, password }
+app.post('/api/login', (req, res) => {
+    const { username, password } = req.body || {};
+    if (!username || !password) {
+        return res.status(400).json({ error: 'Username and password are required' });
+    }
+
+    if (!timingSafeEqualStrings(username, AUTH_USERNAME) || !timingSafeEqualStrings(password, AUTH_PASSWORD)) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const token = jwt.sign({ username }, JWT_SECRET, { expiresIn: TOKEN_EXPIRY });
+    res.json({ token, user: { username } });
+});
+
+// ─── Authentication middleware ────────────────────────────────────────────────
+const requireAuth = (req, res, next) => {
+    const header = req.headers.authorization;
+    if (!header || !header.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const token = header.replace('Bearer ', '');
+    try {
+        req.user = jwt.verify(token, JWT_SECRET);
+        next();
+    } catch (err) {
+        return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+};
+
+app.use('/api', (req, res, next) => {
+    if (req.path === '/login') return next();
+    return requireAuth(req, res, next);
+});
 
 // ─── Validation helpers ───────────────────────────────────────────────────────
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

@@ -1,23 +1,42 @@
 import { useEffect, useState } from 'react'
 
-const API = 'http://localhost:5000'
-
-export default function ProductCatalogue() {
+export default function ProductCatalogue({ token, apiBase, onAuthError }) {
     const [products, setProducts] = useState([])
     const [loading, setLoading] = useState(true)
 
     useEffect(() => {
-        fetch(`${API}/api/products`)
-            .then(r => r.json())
-            .then(data => { setProducts(data); setLoading(false) })
-            .catch(() => setLoading(false))
-    }, [])
+        if (!token) return
+        const controller = new AbortController()
+        const loadProducts = async () => {
+            try {
+                const res = await fetch(`${apiBase}/api/products`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                    signal: controller.signal
+                })
+                if (res.status === 401) return onAuthError()
+                const data = await res.json()
+                setProducts(data)
+            } catch {
+                // handled by state
+            } finally {
+                setLoading(false)
+            }
+        }
+        loadProducts()
+        return () => controller.abort()
+    }, [apiBase, token, onAuthError])
 
     if (loading) return <div className="loading">Loading products...</div>
 
     return (
         <div className="card">
-            <h2>📦 Product Catalogue</h2>
+            <div className="card-heading">
+                <div>
+                    <p className="eyebrow">Inventory visibility</p>
+                    <h2>📦 Product Catalogue</h2>
+                </div>
+                <span className="pill neutral">Live</span>
+            </div>
             <table>
                 <thead>
                 <tr>
@@ -31,7 +50,7 @@ export default function ProductCatalogue() {
                 {products.map((p, i) => (
                     <tr key={p.product_id}>
                         <td>{i + 1}</td>
-                        <td>{p.product_name}</td>
+                        <td className="product-name">{p.product_name}</td>
                         <td>
                 <span className={`badge badge-${p.category.toLowerCase()}`}>
                   {p.category}
@@ -43,7 +62,7 @@ export default function ProductCatalogue() {
                 </tbody>
             </table>
             {products.length === 0 && (
-                <p style={{ color: '#94a3b8', textAlign: 'center', padding: '20px' }}>
+                <p className="empty-state">
                     No products found.
                 </p>
             )}
