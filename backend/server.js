@@ -36,7 +36,12 @@ const timingSafeEqualStrings = (a, b) => {
     try {
         const aBuf = Buffer.from(a);
         const bBuf = Buffer.from(b);
-        return aBuf.length === bBuf.length && crypto.timingSafeEqual(aBuf, bBuf);
+        const maxLen = Math.max(aBuf.length, bBuf.length);
+        const paddedA = Buffer.alloc(maxLen);
+        const paddedB = Buffer.alloc(maxLen);
+        aBuf.copy(paddedA);
+        bBuf.copy(paddedB);
+        return crypto.timingSafeEqual(paddedA, paddedB) && aBuf.length === bBuf.length;
     } catch {
         return false;
     }
@@ -50,7 +55,10 @@ app.post('/api/login', (req, res) => {
         return res.status(400).json({ error: 'Username and password are required' });
     }
 
-    if (!timingSafeEqualStrings(username, AUTH_USERNAME) || !timingSafeEqualStrings(password, AUTH_PASSWORD)) {
+    const usernameValid = timingSafeEqualStrings(username, AUTH_USERNAME);
+    const passwordValid = timingSafeEqualStrings(password, AUTH_PASSWORD);
+
+    if (!usernameValid || !passwordValid) {
         return res.status(401).json({ error: 'Invalid credentials' });
     }
 

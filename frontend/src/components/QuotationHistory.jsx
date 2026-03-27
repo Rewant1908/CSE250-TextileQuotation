@@ -100,7 +100,7 @@ export default function QuotationHistory({ token, apiBase, onAuthError }) {
                                             </thead>
                                             <tbody>
                                             {detail.items.map((item, i) => (
-                                                <tr key={`${detail.quotation_id}-${i}`}>
+                                                <tr key={`${detail.quotation_id}-${item.product_name || i}`}>
                                                     <td>{item.product_name}</td>
                                                     <td>
                                 <span className={`badge badge-${item.category.toLowerCase()}`}>
