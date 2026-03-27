@@ -61,7 +61,9 @@ export default function Login({ onLogin, apiBase }) {
                 <button className="btn btn-primary full" type="submit" disabled={loading}>
                     {loading ? 'Verifying...' : 'Login'}
                 </button>
-                <p className="helper">Use the admin credentials configured in the backend.</p>
+                <p className="helper">
+                    Use credentials from backend <code>.env</code> (see backend/.env.example for sample values).
+                </p>
             </form>
         </div>
     )

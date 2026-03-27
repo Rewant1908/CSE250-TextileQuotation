@@ -79,7 +79,10 @@ const requireAuth = (req, res, next) => {
     }
 };
 
-app.use('/api', requireAuth);
+app.use('/api', (req, res, next) => {
+    if (req.path === '/login') return next();
+    return requireAuth(req, res, next);
+});
 
 // ─── Validation helpers ───────────────────────────────────────────────────────
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
