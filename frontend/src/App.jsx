@@ -103,7 +103,12 @@ function App() {
                     </div>
                 </div>
                 <div className="user-chip">
-                    <div className="avatar">{(user?.username || 'KTI')[0]?.toUpperCase()}</div>
+                    <div className="avatar">
+                        {(() => {
+                            const source = user?.username || 'KTI';
+                            return source.length ? source[0].toUpperCase() : 'K';
+                        })()}
+                    </div>
                     <div className="user-meta">
                         <span className="user-name">{user?.username || 'Session'}</span>
                         <span className="user-role">Administrator</span>

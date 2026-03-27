@@ -32,9 +32,14 @@ const JWT_SECRET = process.env.JWT_SECRET;
 const TOKEN_EXPIRY = '8h';
 
 const timingSafeEqualStrings = (a, b) => {
-    const aBuf = Buffer.from(a);
-    const bBuf = Buffer.from(b);
-    return aBuf.length === bBuf.length && crypto.timingSafeEqual(aBuf, bBuf);
+    if (typeof a !== 'string' || typeof b !== 'string') return false;
+    try {
+        const aBuf = Buffer.from(a);
+        const bBuf = Buffer.from(b);
+        return aBuf.length === bBuf.length && crypto.timingSafeEqual(aBuf, bBuf);
+    } catch {
+        return false;
+    }
 };
 
 // ─── Login endpoint ───────────────────────────────────────────────────────────
@@ -68,8 +73,9 @@ const requireAuth = (req, res, next) => {
     }
 };
 
+const openApiPaths = new Set(['/login']);
 app.use('/api', (req, res, next) => {
-    if (req.path === '/login') return next();
+    if (openApiPaths.has(req.path)) return next();
     return requireAuth(req, res, next);
 });
 
