@@ -3,18 +3,21 @@ import ProductCatalogue from './components/ProductCatalogue'
 import CustomerForm from './components/CustomerForm'
 import QuotationForm from './components/QuotationForm'
 import QuotationHistory from './components/QuotationHistory'
+import AdminProductManager from './components/AdminProductManager'
 import LoginPage from './components/LoginPage'
 import './App.css'
 
-const tabs = ['Products', 'Register Customer', 'Create Quotation', 'Quotation History']
+const USER_TABS  = ['Products', 'Register Customer', 'Create Quotation', 'My Quotations']
+const ADMIN_TABS = ['Quotation Requests', 'Manage Products']
 
 function App() {
-    const [activeTab, setActiveTab] = useState(0)
-    const [isLoggedIn, setIsLoggedIn] = useState(false)
+    const [user, setUser] = useState(null)  // { user_id, username, role }
 
-    if (!isLoggedIn) {
-        return <LoginPage onLogin={() => setIsLoggedIn(true)} />
-    }
+    if (!user) return <LoginPage onLogin={setUser} />
+
+    const isAdmin = user.role === 'admin'
+    const tabs    = isAdmin ? ADMIN_TABS : USER_TABS
+    const [activeTab, setActiveTab] = useState(0)
 
     return (
         <div className="app">
@@ -24,32 +27,38 @@ function App() {
                     <span className="brand-name">KT Impex</span>
                     <span className="brand-sub">Textile Quotation System</span>
                 </div>
-                <button
-                    className="btn btn-logout"
-                    onClick={() => setIsLoggedIn(false)}
-                    style={{ marginLeft: 'auto' }}
-                >
-                    Logout
-                </button>
+                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <span style={{ fontSize: '13px', color: '#94a3b8' }}>
+                        {isAdmin ? '🔐 Admin' : '👤'} {user.username}
+                    </span>
+                    <button className="btn btn-logout" onClick={() => setUser(null)}>Logout</button>
+                </div>
             </header>
 
             <nav className="tabs">
                 {tabs.map((tab, i) => (
-                    <button
-                        key={i}
+                    <button key={i}
                         className={`tab-btn ${activeTab === i ? 'active' : ''}`}
-                        onClick={() => setActiveTab(i)}
-                    >
+                        onClick={() => setActiveTab(i)}>
                         {tab}
                     </button>
                 ))}
             </nav>
 
             <main className="content">
-                {activeTab === 0 && <ProductCatalogue />}
-                {activeTab === 1 && <CustomerForm />}
-                {activeTab === 2 && <QuotationForm />}
-                {activeTab === 3 && <QuotationHistory />}
+                {isAdmin ? (
+                    <>
+                        {activeTab === 0 && <QuotationHistory user={user} />}
+                        {activeTab === 1 && <AdminProductManager />}
+                    </>
+                ) : (
+                    <>
+                        {activeTab === 0 && <ProductCatalogue />}
+                        {activeTab === 1 && <CustomerForm />}
+                        {activeTab === 2 && <QuotationForm user={user} />}
+                        {activeTab === 3 && <QuotationHistory user={user} />}
+                    </>
+                )}
             </main>
 
             <footer className="footer">
