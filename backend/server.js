@@ -60,9 +60,7 @@ app.get('/api/products', async (req, res) => {
     let conn;
     try {
         conn = await pool.getConnection();
-        const rows = await conn.query(
-            'SELECT product_id, product_name, category, base_price FROM products'
-        );
+        const rows = await conn.query('SELECT product_id, product_name, category, base_price FROM products');
         res.json(rows);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -149,7 +147,6 @@ app.post('/api/enquiry', async (req, res) => {
 });
 
 // ─── 3. POST create quotation ─────────────────────────────────────────────────
-// Body: { customer_id, user_id, items: [{ product_id, quantity }] }
 app.post('/api/create-quotation', async (req, res) => {
     const { customer_id, user_id, items } = req.body;
     if (!customer_id || !items || items.length === 0)
@@ -160,7 +157,7 @@ app.post('/api/create-quotation', async (req, res) => {
         if (!item.quantity || Number(item.quantity) <= 0)
             return res.status(400).json({ error: 'Quantity must be greater than 0' });
         if (Number(item.quantity) > 100000)
-            return res.status(400).json({ error: `Quantity too large` });
+            return res.status(400).json({ error: 'Quantity too large' });
     }
     let conn;
     try {
@@ -199,7 +196,6 @@ app.post('/api/create-quotation', async (req, res) => {
 });
 
 // ─── 4. GET quotations (admin = all, user = own only) ─────────────────────────
-// Query params: ?user_id=X&role=admin|user
 app.get('/api/quotations', async (req, res) => {
     const { user_id, role } = req.query;
     let conn;
@@ -210,7 +206,7 @@ app.get('/api/quotations', async (req, res) => {
             rows = await conn.query(
                 `SELECT q.quotation_id, c.customer_name, c.contact_phone, c.email,
                         q.total_amount, ROUND(q.total_amount * 1.18, 2) AS grand_total,
-                        q.status, q.created_at, u.username
+                        q.status, q.decline_reason, q.created_at, u.username
                  FROM quotations q
                  JOIN customers c ON q.customer_id = c.customer_id
                  LEFT JOIN users u ON q.user_id = u.user_id
@@ -221,7 +217,7 @@ app.get('/api/quotations', async (req, res) => {
             rows = await conn.query(
                 `SELECT q.quotation_id, c.customer_name, c.contact_phone, c.email,
                         q.total_amount, ROUND(q.total_amount * 1.18, 2) AS grand_total,
-                        q.status, q.created_at
+                        q.status, q.decline_reason, q.created_at
                  FROM quotations q
                  JOIN customers c ON q.customer_id = c.customer_id
                  WHERE q.user_id = ?
@@ -248,7 +244,8 @@ app.get('/api/quotations/:id', async (req, res) => {
         const [quotation] = await conn.query(
             `SELECT q.quotation_id, c.customer_name, c.contact_phone, c.email,
                     q.total_amount, ROUND(q.total_amount * 0.18, 2) AS gst_18,
-                    ROUND(q.total_amount * 1.18, 2) AS grand_total, q.status, q.created_at
+                    ROUND(q.total_amount * 1.18, 2) AS grand_total,
+                    q.status, q.decline_reason, q.created_at
              FROM quotations q
              JOIN customers c ON q.customer_id = c.customer_id
              WHERE q.quotation_id = ?`,
@@ -272,17 +269,19 @@ app.get('/api/quotations/:id', async (req, res) => {
     }
 });
 
-// ─── ADMIN: PATCH quotation status (accept / decline) ────────────────────────
+// ─── ADMIN: PATCH quotation status + optional decline_reason ────────────────────
 app.patch('/api/quotations/:id/status', async (req, res) => {
-    const { status } = req.body;
+    const { status, decline_reason } = req.body;
     if (!['accepted', 'declined', 'pending'].includes(status))
         return res.status(400).json({ error: 'Invalid status' });
+    if (status === 'declined' && (!decline_reason || decline_reason.trim() === ''))
+        return res.status(400).json({ error: 'Decline reason is required' });
     let conn;
     try {
         conn = await pool.getConnection();
         await conn.query(
-            'UPDATE quotations SET status = ? WHERE quotation_id = ?',
-            [status, req.params.id]
+            'UPDATE quotations SET status = ?, decline_reason = ? WHERE quotation_id = ?',
+            [status, status === 'declined' ? decline_reason.trim() : null, req.params.id]
         );
         res.json({ success: true });
     } catch (err) {

@@ -13,6 +13,8 @@ export default function QuotationHistory({ user }) {
     const [loading, setLoading]       = useState(true)
     const [selected, setSelected]     = useState(null)
     const [detail, setDetail]         = useState(null)
+    const [declineId, setDeclineId]   = useState(null)   // which quotation is being declined
+    const [reason, setReason]         = useState('')      // admin's typed reason
 
     const isAdmin = user?.role === 'admin'
 
@@ -35,12 +37,16 @@ export default function QuotationHistory({ user }) {
         setDetail(await res.json())
     }
 
-    const updateStatus = async (id, status) => {
-        await fetch(`${API}/api/quotations/${id}/status`, {
+    const updateStatus = async (id, status, decline_reason = null) => {
+        const res = await fetch(`${API}/api/quotations/${id}/status`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status })
+            body: JSON.stringify({ status, decline_reason })
         })
+        const data = await res.json()
+        if (!res.ok) { alert(data.error); return }
+        setDeclineId(null)
+        setReason('')
         load()
     }
 
@@ -88,7 +94,7 @@ export default function QuotationHistory({ user }) {
                                     {isAdmin && q.status === 'pending' && (
                                         <>
                                             <button className="btn btn-accept" onClick={() => updateStatus(q.quotation_id, 'accepted')}>✓ Accept</button>
-                                            <button className="btn btn-decline" onClick={() => updateStatus(q.quotation_id, 'declined')}>✕ Decline</button>
+                                            <button className="btn btn-decline" onClick={() => { setDeclineId(q.quotation_id); setReason('') }}>✕ Decline</button>
                                         </>
                                     )}
                                     {isAdmin && q.status !== 'pending' && (
@@ -96,6 +102,48 @@ export default function QuotationHistory({ user }) {
                                     )}
                                 </td>
                             </tr>
+
+                            {/* Admin decline reason input row */}
+                            {isAdmin && declineId === q.quotation_id && (
+                                <tr key={`decline-${q.quotation_id}`}>
+                                    <td colSpan={isAdmin ? 9 : 8}>
+                                        <div className="decline-box">
+                                            <p className="decline-label">📝 Provide a reason for declining Quotation #{q.quotation_id}:</p>
+                                            <textarea
+                                                className="decline-textarea"
+                                                placeholder="e.g. Quantity exceeds current stock, incorrect fabric type requested..."
+                                                value={reason}
+                                                onChange={e => setReason(e.target.value)}
+                                                rows={3}
+                                            />
+                                            <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                                                <button className="btn btn-decline"
+                                                    onClick={() => updateStatus(q.quotation_id, 'declined', reason)}
+                                                    disabled={!reason.trim()}>
+                                                    Confirm Decline
+                                                </button>
+                                                <button className="btn btn-reset" onClick={() => { setDeclineId(null); setReason('') }}>
+                                                    Cancel
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            )}
+
+                            {/* User sees decline reason if declined */}
+                            {!isAdmin && q.status === 'declined' && q.decline_reason && (
+                                <tr key={`reason-${q.quotation_id}`}>
+                                    <td colSpan={8}>
+                                        <div className="decline-reason-box">
+                                            <span className="decline-reason-label">🚨 Reason for Decline:</span>
+                                            <span className="decline-reason-text">{q.decline_reason}</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            )}
+
+                            {/* Line items detail */}
                             {selected === q.quotation_id && detail && (
                                 <tr key={`detail-${q.quotation_id}`}>
                                     <td colSpan={isAdmin ? 9 : 8}>
@@ -115,6 +163,12 @@ export default function QuotationHistory({ user }) {
                                                 ))}
                                                 </tbody>
                                             </table>
+                                            {detail.decline_reason && (
+                                                <div className="decline-reason-box" style={{ marginTop: '12px' }}>
+                                                    <span className="decline-reason-label">🚨 Decline Reason:</span>
+                                                    <span className="decline-reason-text">{detail.decline_reason}</span>
+                                                </div>
+                                            )}
                                         </div>
                                     </td>
                                 </tr>
