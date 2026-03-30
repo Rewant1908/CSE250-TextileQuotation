@@ -4,19 +4,22 @@
 
 ## 1. Project Overview
 
-The **Textile Quotation System** is a full-stack web application developed as part of **CSE250 – Database Management Systems** under **KT Impex**, a textile import and export business.
+The **Textile Quotation System** is a full-stack B2B web application developed as part of **CSE250 – Database Management Systems** under **KT Impex**, a textile import and export business.
 
-The system automates the process of generating quotations by allowing users to register customers, manage textile products, and generate accurate price quotations based on predefined rates and quantities — replacing manual methods to reduce errors and maintain consistent pricing records.
+The system automates the process of generating quotations by allowing registered business users to browse textile products, register customers, and raise quotation requests — while giving the admin complete control over pricing, fabric management, and quotation approval workflows.
 
 ---
 
 ## 2. Features
 
+- **User Authentication** — Signup and login with role-based access (Admin / User)
 - **Product Catalogue** — View all textile products with category and base price
 - **Customer Registration** — Register new customers via enquiry form with input validation
 - **Quotation Generation** — Multi-item quotations with automatic GST (18%) calculation
 - **Price Snapshot** — Locks price at time of quote so future price changes do not affect old quotations
-- **Quotation History** — View all past quotations with grand totals and line items
+- **Quotation Approval Workflow** — Admin can accept or decline quotations with a mandatory decline reason
+- **Scoped Quotation History** — Users see only their own quotations; admin sees all
+- **Product Management** — Admin can add, edit, and delete products and pricing
 - **Input Validation** — Email format, 10-digit phone, positive quantity enforced on backend
 - **Secure CORS** — API restricted to local frontend origins only
 
@@ -37,21 +40,43 @@ The system automates the process of generating quotations by allowing users to r
 
 ---
 
-## 4. Database Design
+## 4. User Roles
 
-The system uses a **MariaDB** relational database (`kt_impex`) with 5 tables — `customers`, `products`, `quotations`, `quotation_items` and `users`..
+| Role | Access |
+|---|---|
+| **Admin** | View all quotations, accept/decline with reason, manage products & pricing |
+| **User** | Browse products, register customers, create quotations, view own quotation history |
+
+Default admin credentials: `admin` / `ktimpex`
+
+---
+
+## 5. Database Design
+
+The system uses a **MariaDB** relational database (`kt_impex`) with 5 tables — `users`, `customers`, `products`, `quotations`, and `quotation_items`.
+
+```sql
+users           → user_id, username, password, email, role, created_at
+customers       → customer_id, customer_name, contact_phone, email
+products        → product_id, product_name, category, base_price
+quotations      → quotation_id, customer_id, user_id, total_amount,
+                  status, decline_reason, created_at
+quotation_items → item_id, quotation_id, product_id,
+                  quantity, unit_price_at_time
+```
 
 ![ERD](database/erd.png)
 
 ---
 
-## 5. Project Structure
+## 6. Project Structure
 
 ```
 CSE250-TextileQuotation/
 ├── backend/
-│   ├── server.js          ← Express server with all 5 API endpoints + security
+│   ├── server.js          ← Express server with all API endpoints + auth + RBAC
 │   ├── db.js              ← MariaDB connection pool
+│   ├── setup_users.sql    ← Creates users table and alters quotations table
 │   ├── .env               ← Environment variables (not committed)
 │   └── .env.example       ← Template for environment variables
 ├── database/
@@ -61,11 +86,13 @@ CSE250-TextileQuotation/
 ├── frontend/
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── ProductCatalogue.jsx   ← Products tab
-│   │   │   ├── CustomerForm.jsx       ← Register Customer tab
-│   │   │   ├── QuotationForm.jsx      ← Create Quotation tab
-│   │   │   └── QuotationHistory.jsx   ← Quotation History tab
-│   │   ├── App.jsx            ← Root component with tab navigation
+│   │   │   ├── LoginPage.jsx              ← Login + Signup
+│   │   │   ├── ProductCatalogue.jsx       ← Products tab
+│   │   │   ├── CustomerForm.jsx           ← Register Customer tab
+│   │   │   ├── QuotationForm.jsx          ← Create Quotation tab
+│   │   │   ├── QuotationHistory.jsx       ← My Quotations / All Requests tab
+│   │   │   └── AdminProductManager.jsx    ← Admin: Manage Products tab
+│   │   ├── App.jsx            ← Root component with role-based tab navigation
 │   │   ├── App.css            ← Main stylesheet
 │   │   └── main.jsx           ← React entry point
 │   └── index.html         ← HTML shell
@@ -75,40 +102,59 @@ CSE250-TextileQuotation/
 
 ---
 
-## 6. Frontend Architecture
+## 7. Frontend Architecture
 
-Built with **React + Vite**. The app has 4 components — `ProductCatalogue`, `CustomerForm`, `QuotationForm`, and `QuotationHistory` — managed via tab navigation in `App.jsx`.
+Built with **React + Vite**. After login, `App.jsx` renders a different set of tabs based on the user's role.
+
+**User tabs:** Products · Register Customer · Create Quotation · My Quotations
+
+**Admin tabs:** Quotation Requests · Manage Products
 
 ---
 
-## 7. API Endpoints
+## 8. API Endpoints
 
 | Method | Endpoint | Description |
 |---|---|---|
+| `POST` | `/api/signup` | Register a new user |
+| `POST` | `/api/login` | Login and receive role |
 | `GET` | `/api/products` | Fetch all textile products |
+| `POST` | `/api/products` | Admin: add a new product |
+| `PUT` | `/api/products/:id` | Admin: update product details |
+| `DELETE` | `/api/products/:id` | Admin: delete a product |
 | `POST` | `/api/enquiry` | Register a new customer (with validation) |
 | `POST` | `/api/create-quotation` | Create a new multi-item quotation |
-| `GET` | `/api/quotations` | Fetch all quotations with grand totals |
-| `GET` | `/api/quotations/:id` | Fetch single quotation with line items and GST breakdown |
+| `GET` | `/api/quotations` | Fetch quotations (scoped by role) |
+| `GET` | `/api/quotations/:id` | Fetch single quotation with line items and GST |
+| `PATCH` | `/api/quotations/:id/status` | Admin: accept or decline with reason |
 
 ### Request / Response Examples
 
-**POST `/api/enquiry`**
+**POST `/api/login`**
 ```json
 // Request
-{ "customer_name": "Rajesh Textiles", "contact_phone": "9876543210", "email": "raj@example.com" }
+{ "username": "admin", "password": "ktimpex" }
 
 // Response
-{ "success": true, "customer_id": 1 }
+{ "success": true, "user_id": 1, "username": "admin", "role": "admin" }
 ```
 
 **POST `/api/create-quotation`**
 ```json
 // Request
-{ "customer_id": 1, "items": [{ "product_id": 2, "quantity": 50 }] }
+{ "customer_id": 1, "user_id": 3, "items": [{ "product_id": 2, "quantity": 50 }] }
 
 // Response
-{ "success": true, "quotation_id": 1 }
+{ "success": true, "quotation_id": 4 }
+```
+
+**PATCH `/api/quotations/4/status`**
+```json
+// Request
+{ "status": "declined", "decline_reason": "Requested quantity exceeds current stock." }
+
+// Response
+{ "success": true }
 ```
 
 **GET `/api/quotations/1`**
@@ -120,22 +166,36 @@ Built with **React + Vite**. The app has 4 components — `ProductCatalogue`, `C
   "total_amount": 32500.00,
   "gst_18": 5850.00,
   "grand_total": 38350.00,
+  "status": "accepted",
   "items": [{ "product_name": "Premium Cotton Suiting", "quantity": 50, "line_total": 32500.00 }]
 }
 ```
 
 ---
 
-## 8. Installation & Setup
+## 9. Installation & Setup
 
 ```bash
 git clone https://github.com/Rewant1908/CSE250-TextileQuotation.git
 cd CSE250-TextileQuotation
+```
 
-# Terminal 1 — Backend
-npm install && npm start
+**Database setup (run once in MariaDB):**
+```sql
+CREATE DATABASE kt_impex;
+USE kt_impex;
+SOURCE database/schema.sql;
+SOURCE database/seed.sql;
+SOURCE backend/setup_users.sql;
+```
 
-# Terminal 2 — Frontend
+**Terminal 1 — Backend:**
+```bash
+cd backend && node server.js
+```
+
+**Terminal 2 — Frontend:**
+```bash
 cd frontend && npm install && npm run dev
 ```
 
@@ -143,8 +203,10 @@ Open `http://localhost:5173` in your browser.
 
 ---
 
-## 9. Security Features
+## 10. Security Features
 
+- **Role-Based Access Control** — Admin and user dashboards are completely separated
+- **Scoped queries** — Users can only fetch their own quotations via `user_id` filter
 - **CORS restricted** — Only local frontend origins are allowed
 - **Input validation** — Email format, 10-digit phone number, name length enforced
 - **Item sanitization** — Product IDs must be positive integers, quantity must be > 0
@@ -153,7 +215,7 @@ Open `http://localhost:5173` in your browser.
 
 ---
 
-## 10. Course Information
+## 11. Course Information
 
 - **Course**: CSE250 – Database Management Systems
 - **Project**: Textile Quotation System
@@ -162,7 +224,7 @@ Open `http://localhost:5173` in your browser.
 
 ---
 
-## 11. Team Members
+## 12. Team Members
 
 - Rewant Agrawal
 - Vijay Kumar
