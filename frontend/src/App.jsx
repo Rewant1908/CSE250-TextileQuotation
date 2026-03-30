@@ -3,12 +3,18 @@ import ProductCatalogue from './components/ProductCatalogue'
 import CustomerForm from './components/CustomerForm'
 import QuotationForm from './components/QuotationForm'
 import QuotationHistory from './components/QuotationHistory'
+import LoginPage from './components/LoginPage'
 import './App.css'
 
 const tabs = ['Products', 'Register Customer', 'Create Quotation', 'Quotation History']
 
 function App() {
     const [activeTab, setActiveTab] = useState(0)
+    const [isLoggedIn, setIsLoggedIn] = useState(false)
+
+    if (!isLoggedIn) {
+        return <LoginPage onLogin={() => setIsLoggedIn(true)} />
+    }
 
     return (
         <div className="app">
@@ -18,6 +24,13 @@ function App() {
                     <span className="brand-name">KT Impex</span>
                     <span className="brand-sub">Textile Quotation System</span>
                 </div>
+                <button
+                    className="btn btn-logout"
+                    onClick={() => setIsLoggedIn(false)}
+                    style={{ marginLeft: 'auto' }}
+                >
+                    Logout
+                </button>
             </header>
 
             <nav className="tabs">
