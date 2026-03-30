@@ -39,7 +39,7 @@ The system automates the process of generating quotations by allowing users to r
 
 ## 4. Database Design
 
-The system uses a **MariaDB** relational database (`kt_impex`) with 4 tables — `customers`, `products`, `quotations`, and `quotation_items`.
+The system uses a **MariaDB** relational database (`kt_impex`) with 5 tables — `customers`, `products`, `quotations`, `quotation_items` and `users`..
 
 ![ERD](database/erd.png)
 
