@@ -99,7 +99,7 @@ tbody tr:hover { background: #263548; }
 .form-group { display: flex; flex-direction: column; gap: 6px; }
 .form-group.full { grid-column: 1 / -1; }
 label { font-size: 13px; color: #94a3b8; font-weight: 500; }
-input, select {
+input, select, textarea {
     background: #0f172a;
     border: 1px solid #334155;
     color: #f1f5f9;
@@ -108,8 +108,9 @@ input, select {
     font-size: 14px;
     outline: none;
     transition: border 0.2s;
+    font-family: 'Segoe UI', sans-serif;
 }
-input:focus, select:focus { border-color: #f59e0b; }
+input:focus, select:focus, textarea:focus { border-color: #f59e0b; }
 
 /* ─── BUTTONS ────────────────────────────────── */
 .btn {
@@ -161,6 +162,7 @@ input:focus, select:focus { border-color: #f59e0b; }
     font-weight: 600;
 }
 .btn-decline:hover { background: #ef4444; color: white; }
+.btn-decline:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .btn-reset {
     background: transparent;
@@ -232,6 +234,50 @@ input:focus, select:focus { border-color: #f59e0b; }
 .detail-panel { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 20px; margin-top: 16px; }
 .detail-panel h3 { color: #f59e0b; margin-bottom: 12px; font-size: 15px; }
 .form-actions { display: flex; justify-content: flex-end; margin-top: 20px; }
+
+/* ─── DECLINE BOX (admin input) ──────────────────── */
+.decline-box {
+    background: #1a0a0a;
+    border: 1px solid #ef444455;
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin: 4px 0;
+}
+.decline-label {
+    font-size: 13px;
+    color: #f87171;
+    font-weight: 600;
+    margin-bottom: 10px;
+    display: block;
+}
+.decline-textarea {
+    width: 100%;
+    resize: vertical;
+    min-height: 72px;
+}
+
+/* ─── DECLINE REASON (user view) ─────────────────── */
+.decline-reason-box {
+    background: #7f1d1d22;
+    border: 1px solid #ef444444;
+    border-radius: 8px;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.decline-reason-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #f87171;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.decline-reason-text {
+    font-size: 14px;
+    color: #fca5a5;
+    line-height: 1.5;
+}
 
 /* ─── LOGIN PAGE ─────────────────────────────── */
 .login-page {
