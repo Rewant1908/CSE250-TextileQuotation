@@ -11,13 +11,13 @@ const USER_TABS  = ['Products', 'Register Customer', 'Create Quotation', 'My Quo
 const ADMIN_TABS = ['Quotation Requests', 'Manage Products']
 
 function App() {
-    const [user, setUser] = useState(null)  // { user_id, username, role }
+    const [user, setUser]         = useState(null)
+    const [activeTab, setActiveTab] = useState(0)
 
-    if (!user) return <LoginPage onLogin={setUser} />
+    if (!user) return <LoginPage onLogin={(u) => { setUser(u); setActiveTab(0) }} />
 
     const isAdmin = user.role === 'admin'
     const tabs    = isAdmin ? ADMIN_TABS : USER_TABS
-    const [activeTab, setActiveTab] = useState(0)
 
     return (
         <div className="app">
@@ -31,7 +31,7 @@ function App() {
                     <span style={{ fontSize: '13px', color: '#94a3b8' }}>
                         {isAdmin ? '🔐 Admin' : '👤'} {user.username}
                     </span>
-                    <button className="btn btn-logout" onClick={() => setUser(null)}>Logout</button>
+                    <button className="btn btn-logout" onClick={() => { setUser(null); setActiveTab(0) }}>Logout</button>
                 </div>
             </header>
 
