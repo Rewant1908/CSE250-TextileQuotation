@@ -17,6 +17,7 @@ body {
     min-height: 100vh;
 }
 
+/* ─── NAVBAR ─────────────────────────────────── */
 .navbar {
     background: #1e293b;
     border-bottom: 2px solid #f59e0b;
@@ -46,6 +47,7 @@ body {
     margin-left: 4px;
 }
 
+/* ─── TABS ───────────────────────────────────── */
 .tabs {
     background: #1e293b;
     display: flex;
@@ -77,6 +79,7 @@ body {
     font-weight: 600;
 }
 
+/* ─── CONTENT ────────────────────────────────── */
 .content {
     flex: 1;
     padding: 32px;
@@ -85,6 +88,7 @@ body {
     margin: 0 auto;
 }
 
+/* ─── CARD ───────────────────────────────────── */
 .card {
     background: #1e293b;
     border: 1px solid #334155;
@@ -101,6 +105,7 @@ body {
     border-bottom: 1px solid #334155;
 }
 
+/* ─── TABLE ──────────────────────────────────── */
 table {
     width: 100%;
     border-collapse: collapse;
@@ -130,6 +135,7 @@ tbody tr {
 
 tbody tr:hover { background: #263548; }
 
+/* ─── BADGES ─────────────────────────────────── */
 .badge {
     display: inline-block;
     padding: 3px 10px;
@@ -141,6 +147,7 @@ tbody tr:hover { background: #263548; }
 .badge-suiting { background: #1d4ed8; color: #bfdbfe; }
 .badge-shirting { background: #065f46; color: #a7f3d0; }
 
+/* ─── FORMS ──────────────────────────────────── */
 .form-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -174,6 +181,7 @@ input, select {
 
 input:focus, select:focus { border-color: #f59e0b; }
 
+/* ─── BUTTONS ────────────────────────────────── */
 .btn {
     padding: 10px 24px;
     border-radius: 8px;
@@ -215,6 +223,23 @@ input:focus, select:focus { border-color: #f59e0b; }
 
 .btn-add:hover { background: #f59e0b22; }
 
+.btn-logout {
+    background: transparent;
+    border: 1px solid #475569;
+    color: #94a3b8;
+    padding: 7px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-logout:hover {
+    border-color: #ef4444;
+    color: #ef4444;
+}
+
+/* ─── TOAST ──────────────────────────────────── */
 .toast {
     padding: 12px 20px;
     border-radius: 8px;
@@ -226,6 +251,7 @@ input:focus, select:focus { border-color: #f59e0b; }
 .toast-success { background: #065f46; color: #a7f3d0; border: 1px solid #10b981; }
 .toast-error { background: #7f1d1d; color: #fecaca; border: 1px solid #ef4444; }
 
+/* ─── LOADING ────────────────────────────────── */
 .loading {
     text-align: center;
     color: #94a3b8;
@@ -233,6 +259,7 @@ input:focus, select:focus { border-color: #f59e0b; }
     font-size: 14px;
 }
 
+/* ─── QUOTATION ITEMS ────────────────────────── */
 .items-list {
     display: flex;
     flex-direction: column;
@@ -276,6 +303,7 @@ input:focus, select:focus { border-color: #f59e0b; }
     padding-top: 10px;
 }
 
+/* ─── FOOTER ─────────────────────────────────── */
 .footer {
     background: #1e293b;
     border-top: 1px solid #334155;
@@ -285,6 +313,7 @@ input:focus, select:focus { border-color: #f59e0b; }
     font-size: 12px;
 }
 
+/* ─── DETAIL PANEL ───────────────────────────── */
 .detail-panel {
     background: #0f172a;
     border: 1px solid #334155;
@@ -303,4 +332,84 @@ input:focus, select:focus { border-color: #f59e0b; }
     display: flex;
     justify-content: flex-end;
     margin-top: 20px;
+}
+
+/* ─── LOGIN PAGE ─────────────────────────────── */
+.login-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #0f172a;
+    padding: 24px;
+}
+
+.login-card {
+    width: 100%;
+    max-width: 420px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 16px;
+    padding: 40px 36px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+}
+
+.login-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 24px;
+}
+
+.login-header .brand-icon {
+    font-size: 32px;
+}
+
+.login-brand-name {
+    font-size: 20px;
+    font-weight: 700;
+    color: #f59e0b;
+    letter-spacing: 1px;
+}
+
+.login-title {
+    font-size: 26px;
+    font-weight: 700;
+    color: #f1f5f9;
+    margin-bottom: 6px;
+}
+
+.login-subtext {
+    color: #64748b;
+    font-size: 14px;
+    margin-bottom: 28px;
+}
+
+.login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.login-btn {
+    width: 100%;
+    padding: 12px;
+    font-size: 15px;
+    margin-top: 4px;
+}
+
+.login-error {
+    color: #fca5a5;
+    background: #7f1d1d44;
+    border: 1px solid #ef444455;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 13px;
+}
+
+.login-hint {
+    text-align: center;
+    margin-top: 20px;
+    font-size: 12px;
+    color: #334155;
 }
