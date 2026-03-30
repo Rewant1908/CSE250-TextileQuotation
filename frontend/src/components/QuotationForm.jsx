@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 
 const API = 'http://localhost:5000'
 
-export default function QuotationForm() {
+export default function QuotationForm({ user }) {
     const [products, setProducts] = useState([])
     const [customerId, setCustomerId] = useState('')
     const [items, setItems] = useState([{ product_id: '', quantity: '' }])
@@ -50,6 +50,7 @@ export default function QuotationForm() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     customer_id: Number(customerId),
+                    user_id: user?.user_id ?? null,
                     items: validItems.map(i => ({
                         product_id: Number(i.product_id),
                         quantity: parseFloat(i.quantity)
@@ -58,7 +59,7 @@ export default function QuotationForm() {
             })
             const data = await res.json()
             if (data.success) {
-                showToast(`Quotation #${data.quotation_id} created successfully!`, 'success')
+                showToast(`Quotation #${data.quotation_id} created! Status: Pending admin approval.`, 'success')
                 setCustomerId('')
                 setItems([{ product_id: '', quantity: '' }])
             } else {
