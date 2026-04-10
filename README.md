@@ -47,7 +47,7 @@ The system automates the process of generating quotations by allowing registered
 | **Admin** | View all quotations, accept/decline with reason, manage products & pricing |
 | **User** | Browse products, register customers, create quotations, view own quotation history |
 
-Default admin credentials: `admin` / `ktimpex`
+
 
 ---
 
