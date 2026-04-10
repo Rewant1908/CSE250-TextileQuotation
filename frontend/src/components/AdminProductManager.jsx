@@ -46,7 +46,20 @@ export default function AdminProductManager() {
 
     const handleDelete = async (id) => {
         if (!confirm('Delete this product?')) return
-        await fetch(`${API}/api/products/${id}`, { method: 'DELETE' })
+        const res  = await fetch(`${API}/api/products/${id}`, { method: 'DELETE' })
+        const data = await res.json()
+        if (!res.ok) {
+            // FK constraint or other DB error — product is still in use
+            const msg = data.error || 'Delete failed'
+            const isFK = msg.includes('foreign key') || msg.includes('a referenced row')
+            showToast(
+                isFK
+                    ? 'Cannot delete — this product is used in existing quotations.'
+                    : `Error: ${msg}`,
+                'error'
+            )
+            return
+        }
         showToast('Product deleted', 'success')
         load()
     }
