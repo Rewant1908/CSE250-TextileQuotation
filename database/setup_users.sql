@@ -1,6 +1,3 @@
--- Migration script — run this ONLY if you have an existing kt_impex database
--- from before the RBAC update. For fresh installs, use schema.sql instead.
-
 CREATE TABLE IF NOT EXISTS users (
     user_id    INT AUTO_INCREMENT PRIMARY KEY,
     username   VARCHAR(50)  NOT NULL UNIQUE,
