@@ -13,16 +13,16 @@ export default function QuotationHistory({ user }) {
     const [loading, setLoading]       = useState(true)
     const [selected, setSelected]     = useState(null)
     const [detail, setDetail]         = useState(null)
-    const [detailLoading, setDetailLoading] = useState(false)
     const [declineId, setDeclineId]   = useState(null)
     const [reason, setReason]         = useState('')
-    const [actionLoading, setActionLoading] = useState(null)
 
     const isAdmin = user?.role === 'admin'
 
     const load = () => {
-        setLoading(true)
-        fetch(`${API}/api/quotations?user_id=${user.user_id}`)
+        const url = isAdmin
+            ? `${API}/api/quotations?role=admin`
+            : `${API}/api/quotations?user_id=${user.user_id}&role=user`
+        fetch(url)
             .then(r => r.json())
             .then(data => { setQuotations(Array.isArray(data) ? data : []); setLoading(false) })
             .catch(() => setLoading(false))
@@ -33,41 +33,21 @@ export default function QuotationHistory({ user }) {
     const viewDetail = async (id) => {
         if (selected === id) { setSelected(null); setDetail(null); return }
         setSelected(id)
-        setDetailLoading(true)
-        setDetail(null)
-        try {
-            const res = await fetch(`${API}/api/quotations/${id}?user_id=${user.user_id}`)
-            const data = await res.json()
-            if (!res.ok) { alert(data.error); setSelected(null); return }
-            setDetail(data)
-        } catch {
-            alert('Failed to load detail')
-            setSelected(null)
-        } finally {
-            setDetailLoading(false)
-        }
+        const res = await fetch(`${API}/api/quotations/${id}`)
+        setDetail(await res.json())
     }
 
     const updateStatus = async (id, status, decline_reason = null) => {
-        setActionLoading(id)
-        try {
-            const res = await fetch(`${API}/api/quotations/${id}/status`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status, decline_reason, user_id: user?.user_id })
-            })
-            const data = await res.json()
-            if (!res.ok) { alert(data.error); return }
-            setDeclineId(null)
-            setReason('')
-            // clear stale detail if it was this quotation
-            if (selected === id) { setSelected(null); setDetail(null) }
-            load()
-        } catch {
-            alert('Action failed')
-        } finally {
-            setActionLoading(null)
-        }
+        const res = await fetch(`${API}/api/quotations/${id}/status`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status, decline_reason, user_id: user?.user_id })
+        })
+        const data = await res.json()
+        if (!res.ok) { alert(data.error); return }
+        setDeclineId(null)
+        setReason('')
+        load()
     }
 
     if (loading) return <div className="loading">Loading quotations...</div>
@@ -92,7 +72,6 @@ export default function QuotationHistory({ user }) {
                 <tbody>
                 {quotations.map(q => {
                     const s = STATUS_COLORS[q.status] || STATUS_COLORS.pending
-                    const busy = actionLoading === q.quotation_id
                     return (
                         <>
                             <tr key={q.quotation_id}>
@@ -114,18 +93,12 @@ export default function QuotationHistory({ user }) {
                                     </button>
                                     {isAdmin && q.status === 'pending' && (
                                         <>
-                                            <button className="btn btn-accept" disabled={busy} onClick={() => updateStatus(q.quotation_id, 'accepted')}>
-                                                {busy ? '...' : '✓ Accept'}
-                                            </button>
-                                            <button className="btn btn-decline" disabled={busy} onClick={() => { setDeclineId(q.quotation_id); setReason('') }}>
-                                                ✕ Decline
-                                            </button>
+                                            <button className="btn btn-accept" onClick={() => updateStatus(q.quotation_id, 'accepted')}>✓ Accept</button>
+                                            <button className="btn btn-decline" onClick={() => { setDeclineId(q.quotation_id); setReason('') }}>✕ Decline</button>
                                         </>
                                     )}
                                     {isAdmin && q.status !== 'pending' && (
-                                        <button className="btn btn-reset" disabled={busy} onClick={() => updateStatus(q.quotation_id, 'pending')}>
-                                            {busy ? '...' : '↺ Reset'}
-                                        </button>
+                                        <button className="btn btn-reset" onClick={() => updateStatus(q.quotation_id, 'pending')}>↺ Reset</button>
                                     )}
                                 </td>
                             </tr>
@@ -145,10 +118,10 @@ export default function QuotationHistory({ user }) {
                                             <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
                                                 <button className="btn btn-decline"
                                                     onClick={() => updateStatus(q.quotation_id, 'declined', reason)}
-                                                    disabled={!reason.trim() || busy}>
-                                                    {busy ? 'Submitting...' : 'Confirm Decline'}
+                                                    disabled={!reason.trim()}>
+                                                    Confirm Decline
                                                 </button>
-                                                <button className="btn btn-reset" disabled={busy} onClick={() => { setDeclineId(null); setReason('') }}>
+                                                <button className="btn btn-reset" onClick={() => { setDeclineId(null); setReason('') }}>
                                                     Cancel
                                                 </button>
                                             </div>
@@ -168,37 +141,31 @@ export default function QuotationHistory({ user }) {
                                 </tr>
                             )}
 
-                            {selected === q.quotation_id && (
+                            {selected === q.quotation_id && detail && (
                                 <tr key={`detail-${q.quotation_id}`}>
                                     <td colSpan={isAdmin ? 9 : 8}>
                                         <div className="detail-panel">
-                                            {detailLoading ? (
-                                                <p style={{ color: '#94a3b8' }}>Loading items...</p>
-                                            ) : detail ? (
-                                                <>
-                                                    <h3>Line Items — Quotation #{detail.quotation_id}</h3>
-                                                    <table>
-                                                        <thead><tr><th>Product</th><th>Category</th><th>Qty (m)</th><th>Unit Price</th><th>Line Total</th></tr></thead>
-                                                        <tbody>
-                                                        {detail.items?.map((item, i) => (
-                                                            <tr key={i}>
-                                                                <td>{item.product_name}</td>
-                                                                <td><span className={`badge badge-${item.category?.toLowerCase()}`}>{item.category}</span></td>
-                                                                <td>{item.quantity} m</td>
-                                                                <td>₹ {Number(item.unit_price_at_time).toFixed(2)}</td>
-                                                                <td>₹ {Number(item.line_total).toFixed(2)}</td>
-                                                            </tr>
-                                                        ))}
-                                                        </tbody>
-                                                    </table>
-                                                    {detail.decline_reason && (
-                                                        <div className="decline-reason-box" style={{ marginTop: '12px' }}>
-                                                            <span className="decline-reason-label">🚨 Decline Reason:</span>
-                                                            <span className="decline-reason-text">{detail.decline_reason}</span>
-                                                        </div>
-                                                    )}
-                                                </>
-                                            ) : null}
+                                            <h3>Line Items — Quotation #{detail.quotation_id}</h3>
+                                            <table>
+                                                <thead><tr><th>Product</th><th>Category</th><th>Qty (m)</th><th>Unit Price</th><th>Line Total</th></tr></thead>
+                                                <tbody>
+                                                {detail.items?.map((item, i) => (
+                                                    <tr key={i}>
+                                                        <td>{item.product_name}</td>
+                                                        <td><span className={`badge badge-${item.category?.toLowerCase()}`}>{item.category}</span></td>
+                                                        <td>{item.quantity} m</td>
+                                                        <td>₹ {Number(item.unit_price_at_time).toFixed(2)}</td>
+                                                        <td>₹ {Number(item.line_total).toFixed(2)}</td>
+                                                    </tr>
+                                                ))}
+                                                </tbody>
+                                            </table>
+                                            {detail.decline_reason && (
+                                                <div className="decline-reason-box" style={{ marginTop: '12px' }}>
+                                                    <span className="decline-reason-label">🚨 Decline Reason:</span>
+                                                    <span className="decline-reason-text">{detail.decline_reason}</span>
+                                                </div>
+                                            )}
                                         </div>
                                     </td>
                                 </tr>
