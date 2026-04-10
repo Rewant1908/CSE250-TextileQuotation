@@ -8,11 +8,12 @@ import request from 'supertest';
 
 const BASE = 'http://localhost:5000';
 
-// ─── Track created IDs for cleanup / chaining ────────────────────────────────
+// ─── Track created IDs for chaining ──────────────────────────────────────────
 let createdUserId;
 let createdCustomerId;
 let createdQuotationId;
-let createdProductId;
+let createdProductId;       // used in quotation — cannot be deleted (FK)
+let deletableProductId;     // standalone product, safe to delete
 
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
 describe('POST /api/signup', () => {
@@ -82,7 +83,7 @@ describe('GET /api/products', () => {
 });
 
 describe('POST /api/products', () => {
-    it('adds a new product and returns product_id', async () => {
+    it('adds a product used in quotation test (createdProductId)', async () => {
         const res = await request(BASE)
             .post('/api/products')
             .send({ product_name: 'Test Fabric', category: 'Denim', base_price: 499.99 });
@@ -90,6 +91,15 @@ describe('POST /api/products', () => {
         expect(res.body.success).toBe(true);
         expect(res.body.product_id).toBeDefined();
         createdProductId = res.body.product_id;
+    });
+
+    it('adds a standalone product used only for delete test (deletableProductId)', async () => {
+        const res = await request(BASE)
+            .post('/api/products')
+            .send({ product_name: 'Delete Me Fabric', category: 'Shirting', base_price: 199.00 });
+        expect(res.status).toBe(201);
+        expect(res.body.product_id).toBeDefined();
+        deletableProductId = res.body.product_id;
     });
 
     it('rejects missing fields', async () => {
@@ -268,11 +278,12 @@ describe('PATCH /api/quotations/:id/status', () => {
     });
 });
 
-// ─── ADMIN: DELETE product (cleanup) ─────────────────────────────────────────
+// ─── ADMIN: DELETE product ────────────────────────────────────────────────────
+// Uses deletableProductId — a product with no quotation_items FK reference
 describe('DELETE /api/products/:id', () => {
-    it('deletes the test product created earlier', async () => {
+    it('deletes a product that has no quotation references', async () => {
         const res = await request(BASE)
-            .delete(`/api/products/${createdProductId}`);
+            .delete(`/api/products/${deletableProductId}`);
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
     });
