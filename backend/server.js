@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
+import bcrypt from 'bcrypt';
 import pool from './db.js';
+import { checkPermission } from './middleware/checkPermission.js';
 
 const app = express();
 
@@ -12,6 +14,7 @@ app.use(express.json());
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const phoneRegex = /^[0-9]{10}$/;
+const SALT_ROUNDS = 10;
 
 // ─── AUTH: SIGNUP ─────────────────────────────────────────────────────────────
 app.post('/api/signup', async (req, res) => {
@@ -23,9 +26,10 @@ app.post('/api/signup', async (req, res) => {
         conn = await pool.getConnection();
         const [existing] = await conn.query('SELECT user_id FROM users WHERE username = ?', [username]);
         if (existing) return res.status(409).json({ error: 'Username already taken' });
+        const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
         const result = await conn.query(
             'INSERT INTO users (username, password, email, role) VALUES (?, ?, ?, ?)',
-            [username, password, email || null, 'user']
+            [username, password_hash, email || null, 'user']
         );
         res.status(201).json({ success: true, user_id: Number(result.insertId) });
     } catch (err) {
@@ -43,10 +47,12 @@ app.post('/api/login', async (req, res) => {
     try {
         conn = await pool.getConnection();
         const [user] = await conn.query(
-            'SELECT user_id, username, role FROM users WHERE username = ? AND password = ?',
-            [username, password]
+            'SELECT user_id, username, password, role FROM users WHERE username = ?',
+            [username]
         );
         if (!user) return res.status(401).json({ error: 'Invalid username or password' });
+        const match = await bcrypt.compare(password, user.password);
+        if (!match) return res.status(401).json({ error: 'Invalid username or password' });
         res.json({ success: true, user_id: user.user_id, username: user.username, role: user.role });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -70,7 +76,7 @@ app.get('/api/products', async (req, res) => {
 });
 
 // ─── ADMIN: ADD product ───────────────────────────────────────────────────────
-app.post('/api/products', async (req, res) => {
+app.post('/api/products', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
     const { product_name, category, base_price } = req.body;
     if (!product_name || !category || !base_price) return res.status(400).json({ error: 'All fields required' });
     let conn;
@@ -89,7 +95,7 @@ app.post('/api/products', async (req, res) => {
 });
 
 // ─── ADMIN: UPDATE product ────────────────────────────────────────────────────
-app.put('/api/products/:id', async (req, res) => {
+app.put('/api/products/:id', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
     const { product_name, category, base_price } = req.body;
     let conn;
     try {
@@ -107,7 +113,7 @@ app.put('/api/products/:id', async (req, res) => {
 });
 
 // ─── ADMIN: DELETE product ────────────────────────────────────────────────────
-app.delete('/api/products/:id', async (req, res) => {
+app.delete('/api/products/:id', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
     let conn;
     try {
         conn = await pool.getConnection();
@@ -269,8 +275,8 @@ app.get('/api/quotations/:id', async (req, res) => {
     }
 });
 
-// ─── ADMIN: PATCH quotation status + optional decline_reason ────────────────────
-app.patch('/api/quotations/:id/status', async (req, res) => {
+// ─── ADMIN: PATCH quotation status ───────────────────────────────────────────
+app.patch('/api/quotations/:id/status', checkPermission('MANAGE_QUOTATION_STATUS'), async (req, res) => {
     const { status, decline_reason } = req.body;
     if (!['accepted', 'declined', 'pending'].includes(status))
         return res.status(400).json({ error: 'Invalid status' });
