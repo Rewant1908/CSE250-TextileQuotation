@@ -7,7 +7,7 @@ import { checkPermission } from './middleware/checkPermission.js';
 const app = express();
 
 app.use(cors({
-    origin: ['http://localhost:5173', 'http://127.0.0.1:5500', 'null'],
+    origin: ['http://localhost:5173', 'http://127.0.0.1:5500'],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
 }));
 app.use(express.json());
@@ -21,11 +21,16 @@ app.post('/api/signup', async (req, res) => {
     const { username, password, email } = req.body;
     if (!username || !password) return res.status(400).json({ error: 'username and password required' });
     if (password.length < 4) return res.status(400).json({ error: 'Password must be at least 4 characters' });
+    if (email && !emailRegex.test(email)) return res.status(400).json({ error: 'Invalid email format' });
     let conn;
     try {
         conn = await pool.getConnection();
         const [existing] = await conn.query('SELECT user_id FROM users WHERE username = ?', [username]);
         if (existing) return res.status(409).json({ error: 'Username already taken' });
+        if (email) {
+            const [emailExists] = await conn.query('SELECT user_id FROM users WHERE email = ?', [email]);
+            if (emailExists) return res.status(409).json({ error: 'Email already registered' });
+        }
         const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
         const result = await conn.query(
             'INSERT INTO users (username, password, email, role) VALUES (?, ?, ?, ?)',
@@ -78,13 +83,18 @@ app.get('/api/products', async (req, res) => {
 // ─── ADMIN: ADD product ───────────────────────────────────────────────────────
 app.post('/api/products', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
     const { product_name, category, base_price } = req.body;
-    if (!product_name || !category || !base_price) return res.status(400).json({ error: 'All fields required' });
+    if (!product_name || !category || base_price === undefined || base_price === null)
+        return res.status(400).json({ error: 'All fields required' });
+    if (product_name.trim() === '') return res.status(400).json({ error: 'product_name cannot be empty' });
+    if (category.trim() === '') return res.status(400).json({ error: 'category cannot be empty' });
+    const price = Number(base_price);
+    if (isNaN(price) || price <= 0) return res.status(400).json({ error: 'base_price must be a positive number' });
     let conn;
     try {
         conn = await pool.getConnection();
         const result = await conn.query(
             'INSERT INTO products (product_name, category, base_price) VALUES (?, ?, ?)',
-            [product_name.trim(), category.trim(), base_price]
+            [product_name.trim(), category.trim(), price]
         );
         res.status(201).json({ success: true, product_id: Number(result.insertId) });
     } catch (err) {
@@ -97,13 +107,22 @@ app.post('/api/products', checkPermission('MANAGE_PRODUCTS'), async (req, res) =
 // ─── ADMIN: UPDATE product ────────────────────────────────────────────────────
 app.put('/api/products/:id', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
     const { product_name, category, base_price } = req.body;
+    if (!product_name || !category || base_price === undefined || base_price === null)
+        return res.status(400).json({ error: 'All fields required' });
+    if (product_name.trim() === '') return res.status(400).json({ error: 'product_name cannot be empty' });
+    if (category.trim() === '') return res.status(400).json({ error: 'category cannot be empty' });
+    const price = Number(base_price);
+    if (isNaN(price) || price <= 0) return res.status(400).json({ error: 'base_price must be a positive number' });
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid product ID' });
     let conn;
     try {
         conn = await pool.getConnection();
-        await conn.query(
-            'UPDATE products SET product_name = ?, category = ?, base_price = ? WHERE product_id = ?',
-            [product_name, category, base_price, req.params.id]
+        const result = await conn.query(
+            'UPDATE products SET product_name = ?, category = ?, base_price = ?, updated_at = CURRENT_TIMESTAMP WHERE product_id = ?',
+            [product_name.trim(), category.trim(), price, id]
         );
+        if (result.affectedRows === 0) return res.status(404).json({ error: 'Product not found' });
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -202,13 +221,17 @@ app.post('/api/create-quotation', async (req, res) => {
 });
 
 // ─── 4. GET quotations (admin = all, user = own only) ─────────────────────────
+// FIX: role is verified from DB using user_id, not trusted from query string
 app.get('/api/quotations', async (req, res) => {
-    const { user_id, role } = req.query;
+    const { user_id } = req.query;
+    if (!user_id) return res.status(400).json({ error: 'user_id required' });
     let conn;
     try {
         conn = await pool.getConnection();
+        const [requester] = await conn.query('SELECT role FROM users WHERE user_id = ?', [user_id]);
+        if (!requester) return res.status(401).json({ error: 'User not found' });
         let rows;
-        if (role === 'admin') {
+        if (requester.role === 'admin') {
             rows = await conn.query(
                 `SELECT q.quotation_id, c.customer_name, c.contact_phone, c.email,
                         q.total_amount, ROUND(q.total_amount * 1.18, 2) AS grand_total,
@@ -219,7 +242,6 @@ app.get('/api/quotations', async (req, res) => {
                  ORDER BY q.created_at DESC`
             );
         } else {
-            if (!user_id) return res.status(400).json({ error: 'user_id required' });
             rows = await conn.query(
                 `SELECT q.quotation_id, c.customer_name, c.contact_phone, c.email,
                         q.total_amount, ROUND(q.total_amount * 1.18, 2) AS grand_total,
@@ -240,15 +262,20 @@ app.get('/api/quotations', async (req, res) => {
 });
 
 // ─── 5. GET single quotation with items ──────────────────────────────────────
+// FIX: verify user owns the quotation (or is admin) before returning detail
 app.get('/api/quotations/:id', async (req, res) => {
     const quotationId = Number(req.params.id);
     if (!Number.isInteger(quotationId) || quotationId <= 0)
         return res.status(400).json({ error: 'Invalid quotation ID' });
+    const { user_id } = req.query;
+    if (!user_id) return res.status(400).json({ error: 'user_id required' });
     let conn;
     try {
         conn = await pool.getConnection();
+        const [requester] = await conn.query('SELECT role FROM users WHERE user_id = ?', [user_id]);
+        if (!requester) return res.status(401).json({ error: 'User not found' });
         const [quotation] = await conn.query(
-            `SELECT q.quotation_id, c.customer_name, c.contact_phone, c.email,
+            `SELECT q.quotation_id, q.user_id, c.customer_name, c.contact_phone, c.email,
                     q.total_amount, ROUND(q.total_amount * 0.18, 2) AS gst_18,
                     ROUND(q.total_amount * 1.18, 2) AS grand_total,
                     q.status, q.decline_reason, q.created_at
@@ -258,6 +285,8 @@ app.get('/api/quotations/:id', async (req, res) => {
             [quotationId]
         );
         if (!quotation) return res.status(404).json({ error: 'Quotation not found' });
+        if (requester.role !== 'admin' && quotation.user_id !== Number(user_id))
+            return res.status(403).json({ error: 'Forbidden: not your quotation' });
         const items = await conn.query(
             `SELECT p.product_name, p.category, qi.quantity,
                     qi.unit_price_at_time,
@@ -286,7 +315,7 @@ app.patch('/api/quotations/:id/status', checkPermission('MANAGE_QUOTATION_STATUS
     try {
         conn = await pool.getConnection();
         await conn.query(
-            'UPDATE quotations SET status = ?, decline_reason = ? WHERE quotation_id = ?',
+            'UPDATE quotations SET status = ?, decline_reason = ?, updated_at = CURRENT_TIMESTAMP WHERE quotation_id = ?',
             [status, status === 'declined' ? decline_reason.trim() : null, req.params.id]
         );
         res.json({ success: true });

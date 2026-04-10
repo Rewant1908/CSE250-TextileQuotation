@@ -1,16 +1,19 @@
+-- Run this once to create all tables.
+-- NOTE: After running, set the admin password manually:
+--   UPDATE users SET password = '<bcrypt_hash>' WHERE username = 'admin';
+--   Generate hash: node -e "require('bcrypt').hash('yourpassword',10).then(console.log)"
+
 create table if not exists users
 (
     user_id    int auto_increment
         primary key,
     username   varchar(50)             not null unique,
-    password   varchar(100)            not null,
-    email      varchar(150)            null,
+    password   varchar(255)            not null,
+    email      varchar(150)            null unique,
     role       enum ('admin', 'user')  not null default 'user',
-    created_at timestamp               default current_timestamp()
+    created_at timestamp               default current_timestamp(),
+    updated_at timestamp               default current_timestamp() on update current_timestamp()
 );
-
--- Insert default admin
-INSERT IGNORE INTO users (username, password, role) VALUES ('admin', 'ktimpex', 'admin');
 
 create table if not exists customers
 (
@@ -27,7 +30,9 @@ create table if not exists products
         primary key,
     product_name varchar(150)   not null,
     category     varchar(50)    not null,
-    base_price   decimal(10, 2) not null
+    base_price   decimal(10, 2) not null,
+    created_at   timestamp      default current_timestamp(),
+    updated_at   timestamp      default current_timestamp() on update current_timestamp()
 );
 
 create table if not exists quotations
@@ -40,6 +45,7 @@ create table if not exists quotations
     status         enum ('pending','accepted','declined') not null default 'pending',
     decline_reason varchar(500)                                    null,
     created_at     timestamp       default current_timestamp()     null,
+    updated_at     timestamp       default current_timestamp() on update current_timestamp() null,
     constraint quotations_ibfk_1
         foreign key (customer_id) references customers (customer_id),
     constraint fk_quot_user
@@ -55,7 +61,7 @@ create table if not exists quotation_items
     quantity           decimal(10, 2) null,
     unit_price_at_time decimal(10, 2) null,
     constraint quotation_items_ibfk_1
-        foreign key (quotation_id) references quotations (quotation_id),
+        foreign key (quotation_id) references quotations (quotation_id) on delete cascade,
     constraint quotation_items_ibfk_2
         foreign key (product_id) references products (product_id)
 );
