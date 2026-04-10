@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 
 const API = 'http://localhost:5000'
 
-export default function AdminProductManager() {
+export default function AdminProductManager({ user }) {
     const [products, setProducts] = useState([])
     const [form, setForm]         = useState({ product_name: '', category: '', base_price: '' })
     const [editId, setEditId]     = useState(null)
@@ -26,7 +26,11 @@ export default function AdminProductManager() {
         const res    = await fetch(url, {
             method,
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...form, base_price: parseFloat(form.base_price) })
+            body: JSON.stringify({
+                ...form,
+                base_price: parseFloat(form.base_price),
+                user_id: user?.user_id
+            })
         })
         const data = await res.json()
         if (data.success || data.product_id) {
@@ -46,10 +50,9 @@ export default function AdminProductManager() {
 
     const handleDelete = async (id) => {
         if (!confirm('Delete this product?')) return
-        const res  = await fetch(`${API}/api/products/${id}`, { method: 'DELETE' })
+        const res  = await fetch(`${API}/api/products/${id}?user_id=${user?.user_id}`, { method: 'DELETE' })
         const data = await res.json()
         if (!res.ok) {
-            // FK constraint or other DB error — product is still in use
             const msg = data.error || 'Delete failed'
             const isFK = msg.includes('foreign key') || msg.includes('a referenced row')
             showToast(

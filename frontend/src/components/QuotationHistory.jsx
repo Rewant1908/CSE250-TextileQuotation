@@ -13,8 +13,8 @@ export default function QuotationHistory({ user }) {
     const [loading, setLoading]       = useState(true)
     const [selected, setSelected]     = useState(null)
     const [detail, setDetail]         = useState(null)
-    const [declineId, setDeclineId]   = useState(null)   // which quotation is being declined
-    const [reason, setReason]         = useState('')      // admin's typed reason
+    const [declineId, setDeclineId]   = useState(null)
+    const [reason, setReason]         = useState('')
 
     const isAdmin = user?.role === 'admin'
 
@@ -41,7 +41,7 @@ export default function QuotationHistory({ user }) {
         const res = await fetch(`${API}/api/quotations/${id}/status`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status, decline_reason })
+            body: JSON.stringify({ status, decline_reason, user_id: user?.user_id })
         })
         const data = await res.json()
         if (!res.ok) { alert(data.error); return }
@@ -103,7 +103,6 @@ export default function QuotationHistory({ user }) {
                                 </td>
                             </tr>
 
-                            {/* Admin decline reason input row */}
                             {isAdmin && declineId === q.quotation_id && (
                                 <tr key={`decline-${q.quotation_id}`}>
                                     <td colSpan={isAdmin ? 9 : 8}>
@@ -131,7 +130,6 @@ export default function QuotationHistory({ user }) {
                                 </tr>
                             )}
 
-                            {/* User sees decline reason if declined */}
                             {!isAdmin && q.status === 'declined' && q.decline_reason && (
                                 <tr key={`reason-${q.quotation_id}`}>
                                     <td colSpan={8}>
@@ -143,7 +141,6 @@ export default function QuotationHistory({ user }) {
                                 </tr>
                             )}
 
-                            {/* Line items detail */}
                             {selected === q.quotation_id && detail && (
                                 <tr key={`detail-${q.quotation_id}`}>
                                     <td colSpan={isAdmin ? 9 : 8}>
