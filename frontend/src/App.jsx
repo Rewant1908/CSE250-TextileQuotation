@@ -49,7 +49,7 @@ function App() {
                 {isAdmin ? (
                     <>
                         {activeTab === 0 && <QuotationHistory user={user} />}
-                        {activeTab === 1 && <AdminProductManager />}
+                        {activeTab === 1 && <AdminProductManager user={user} />}
                     </>
                 ) : (
                     <>
