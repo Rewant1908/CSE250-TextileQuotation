@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import ProductCatalogue from './components/ProductCatalogue'
 import CustomerForm from './components/CustomerForm'
 import QuotationForm from './components/QuotationForm'
@@ -10,11 +10,30 @@ import './App.css'
 const USER_TABS  = ['Products', 'Register Customer', 'Create Quotation', 'My Quotations']
 const ADMIN_TABS = ['Quotation Requests', 'Manage Products']
 
+const STORAGE_KEY = 'kt_impex_user'
+
 function App() {
-    const [user, setUser]         = useState(null)
+    const [user, setUser]           = useState(() => {
+        try {
+            const saved = localStorage.getItem(STORAGE_KEY)
+            return saved ? JSON.parse(saved) : null
+        } catch { return null }
+    })
     const [activeTab, setActiveTab] = useState(0)
 
-    if (!user) return <LoginPage onLogin={(u) => { setUser(u); setActiveTab(0) }} />
+    const handleLogin = (u) => {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(u))
+        setUser(u)
+        setActiveTab(0)
+    }
+
+    const handleLogout = () => {
+        localStorage.removeItem(STORAGE_KEY)
+        setUser(null)
+        setActiveTab(0)
+    }
+
+    if (!user) return <LoginPage onLogin={handleLogin} />
 
     const isAdmin = user.role === 'admin'
     const tabs    = isAdmin ? ADMIN_TABS : USER_TABS
@@ -31,7 +50,7 @@ function App() {
                     <span style={{ fontSize: '13px', color: '#94a3b8' }}>
                         {isAdmin ? '🔐 Admin' : '👤'} {user.username}
                     </span>
-                    <button className="btn btn-logout" onClick={() => { setUser(null); setActiveTab(0) }}>Logout</button>
+                    <button className="btn btn-logout" onClick={handleLogout}>Logout</button>
                 </div>
             </header>
 

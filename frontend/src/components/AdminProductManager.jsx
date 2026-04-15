@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
-
-const API = 'http://localhost:5000'
+import API from '../api'
 
 export default function AdminProductManager({ user }) {
     const [products, setProducts] = useState([])
@@ -53,12 +52,10 @@ export default function AdminProductManager({ user }) {
         const res  = await fetch(`${API}/api/products/${id}?user_id=${user?.user_id}`, { method: 'DELETE' })
         const data = await res.json()
         if (!res.ok) {
-            const msg = data.error || 'Delete failed'
+            const msg  = data.error || 'Delete failed'
             const isFK = msg.includes('foreign key') || msg.includes('a referenced row')
             showToast(
-                isFK
-                    ? 'Cannot delete — this product is used in existing quotations.'
-                    : `Error: ${msg}`,
+                isFK ? 'Cannot delete — this product is used in existing quotations.' : `Error: ${msg}`,
                 'error'
             )
             return

@@ -7,7 +7,7 @@ import { checkPermission } from './middleware/checkPermission.js';
 const app = express();
 
 app.use(cors({
-    origin: ['http://localhost:5173', 'http://127.0.0.1:5500', 'null'],
+    origin: ['http://localhost:5173', 'http://127.0.0.1:5500'],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
 }));
 app.use(express.json());
@@ -21,11 +21,16 @@ app.post('/api/signup', async (req, res) => {
     const { username, password, email } = req.body;
     if (!username || !password) return res.status(400).json({ error: 'username and password required' });
     if (password.length < 4) return res.status(400).json({ error: 'Password must be at least 4 characters' });
+    if (email && !emailRegex.test(email)) return res.status(400).json({ error: 'Invalid email format' });
     let conn;
     try {
         conn = await pool.getConnection();
         const [existing] = await conn.query('SELECT user_id FROM users WHERE username = ?', [username]);
         if (existing) return res.status(409).json({ error: 'Username already taken' });
+        if (email) {
+            const [emailExists] = await conn.query('SELECT user_id FROM users WHERE email = ?', [email]);
+            if (emailExists) return res.status(409).json({ error: 'Email already registered' });
+        }
         const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
         const result = await conn.query(
             'INSERT INTO users (username, password, email, role) VALUES (?, ?, ?, ?)',
@@ -201,14 +206,17 @@ app.post('/api/create-quotation', async (req, res) => {
     }
 });
 
-// ─── 4. GET quotations (admin = all, user = own only) ─────────────────────────
+// ─── 4. GET quotations — role verified from DB, not query string ─────────────────────
 app.get('/api/quotations', async (req, res) => {
-    const { user_id, role } = req.query;
+    const { user_id } = req.query;
+    if (!user_id) return res.status(400).json({ error: 'user_id required' });
     let conn;
     try {
         conn = await pool.getConnection();
+        const [requester] = await conn.query('SELECT role FROM users WHERE user_id = ?', [user_id]);
+        if (!requester) return res.status(401).json({ error: 'User not found' });
         let rows;
-        if (role === 'admin') {
+        if (requester.role === 'admin') {
             rows = await conn.query(
                 `SELECT q.quotation_id, c.customer_name, c.contact_phone, c.email,
                         q.total_amount, ROUND(q.total_amount * 1.18, 2) AS grand_total,
@@ -219,7 +227,6 @@ app.get('/api/quotations', async (req, res) => {
                  ORDER BY q.created_at DESC`
             );
         } else {
-            if (!user_id) return res.status(400).json({ error: 'user_id required' });
             rows = await conn.query(
                 `SELECT q.quotation_id, c.customer_name, c.contact_phone, c.email,
                         q.total_amount, ROUND(q.total_amount * 1.18, 2) AS grand_total,

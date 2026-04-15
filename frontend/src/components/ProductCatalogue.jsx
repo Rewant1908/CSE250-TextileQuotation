@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react'
-
-const API = 'http://localhost:5000'
+import API from '../api'
 
 export default function ProductCatalogue() {
     const [products, setProducts] = useState([])
-    const [loading, setLoading] = useState(true)
+    const [loading, setLoading]   = useState(true)
 
     useEffect(() => {
         fetch(`${API}/api/products`)
@@ -33,9 +32,9 @@ export default function ProductCatalogue() {
                         <td>{i + 1}</td>
                         <td>{p.product_name}</td>
                         <td>
-                <span className={`badge badge-${p.category.toLowerCase()}`}>
-                  {p.category}
-                </span>
+                            <span className={`badge badge-${p.category.toLowerCase()}`}>
+                                {p.category}
+                            </span>
                         </td>
                         <td>₹ {Number(p.base_price).toFixed(2)}</td>
                     </tr>

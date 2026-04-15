@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react'
-
-const API = 'http://localhost:5000'
+import API from '../api'
 
 export default function QuotationForm({ user }) {
-    const [products, setProducts] = useState([])
+    const [products, setProducts]   = useState([])
     const [customerId, setCustomerId] = useState('')
-    const [items, setItems] = useState([{ product_id: '', quantity: '' }])
-    const [toast, setToast] = useState(null)
-    const [loading, setLoading] = useState(false)
+    const [items, setItems]         = useState([{ product_id: '', quantity: '' }])
+    const [toast, setToast]         = useState(null)
+    const [loading, setLoading]     = useState(false)
 
     useEffect(() => {
         fetch(`${API}/api/products`)
@@ -20,7 +19,7 @@ export default function QuotationForm({ user }) {
         setTimeout(() => setToast(null), 4000)
     }
 
-    const addItem = () => setItems([...items, { product_id: '', quantity: '' }])
+    const addItem    = () => setItems([...items, { product_id: '', quantity: '' }])
     const removeItem = (i) => setItems(items.filter((_, idx) => idx !== i))
     const updateItem = (i, field, value) => {
         const updated = [...items]
@@ -33,9 +32,8 @@ export default function QuotationForm({ user }) {
         return p ? Number(p.base_price) : 0
     }
 
-    const subtotal = items.reduce((sum, item) =>
-        sum + (getPrice(item.product_id) * (parseFloat(item.quantity) || 0)), 0)
-    const gst = subtotal * 0.18
+    const subtotal   = items.reduce((sum, item) => sum + (getPrice(item.product_id) * (parseFloat(item.quantity) || 0)), 0)
+    const gst        = subtotal * 0.18
     const grandTotal = subtotal + gst
 
     const handleSubmit = async (e) => {
@@ -53,7 +51,7 @@ export default function QuotationForm({ user }) {
                     user_id: user?.user_id ?? null,
                     items: validItems.map(i => ({
                         product_id: Number(i.product_id),
-                        quantity: parseFloat(i.quantity)
+                        quantity:   parseFloat(i.quantity)
                     }))
                 })
             })

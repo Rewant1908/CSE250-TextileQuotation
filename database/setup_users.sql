@@ -1,20 +1,16 @@
-CREATE TABLE IF NOT EXISTS users (
-    user_id    INT AUTO_INCREMENT PRIMARY KEY,
-    username   VARCHAR(50)  NOT NULL UNIQUE,
-    password   VARCHAR(100) NOT NULL,
-    email      VARCHAR(150),
-    role       ENUM('admin', 'user') NOT NULL DEFAULT 'user',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Insert default admin (change password as needed)
-INSERT IGNORE INTO users (username, password, role) VALUES ('admin', 'ktimpex', 'admin');
-
--- Add user_id, status and decline_reason to quotations table (if not already present)
-ALTER TABLE quotations
-    ADD COLUMN IF NOT EXISTS user_id        INT NULL,
-    ADD COLUMN IF NOT EXISTS status         ENUM('pending','accepted','declined') NOT NULL DEFAULT 'pending',
-    ADD COLUMN IF NOT EXISTS decline_reason VARCHAR(500) NULL,
-    ADD CONSTRAINT fk_quot_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL;
-
-CREATE INDEX IF NOT EXISTS user_id ON quotations (user_id);
+-- setup_users.sql
+-- DEPRECATED: This file is superseded by database/schema.sql which is the canonical migration.
+-- Do NOT run this file. It is kept for reference only.
+--
+-- The users table is now defined in schema.sql with:
+--   password VARCHAR(255)   (bcrypt-compatible length)
+--   updated_at column
+--   UNIQUE constraint on email
+--
+-- To create the admin user, run schema.sql first, then set a bcrypt password:
+--   Step 1: Generate hash
+--     node -e "import('bcrypt').then(b => b.default.hash('yourpassword', 10).then(console.log))"
+--   Step 2: Insert admin
+--     INSERT INTO users (username, password, role) VALUES ('admin', '<paste_hash_here>', 'admin');
+--     OR update existing:
+--     UPDATE users SET password = '<paste_hash_here>' WHERE username = 'admin';

@@ -1,25 +1,26 @@
 import { useState } from 'react'
-
-const API = 'http://localhost:5000'
+import API from '../api'
 
 export default function LoginPage({ onLogin }) {
     const [isSignup, setIsSignup] = useState(false)
-    const [error, setError] = useState('')
-    const [loading, setLoading] = useState(false)
+    const [error, setError]       = useState('')
+    const [success, setSuccess]   = useState('')
+    const [loading, setLoading]   = useState(false)
 
     const handleSubmit = async (e) => {
         e.preventDefault()
         setError('')
+        setSuccess('')
         setLoading(true)
         const username = e.target.username.value.trim()
         const password = e.target.password.value.trim()
-        const email = isSignup ? (e.target.email?.value?.trim() || '') : ''
+        const email    = isSignup ? (e.target.email?.value?.trim() || '') : ''
 
         const endpoint = isSignup ? '/api/signup' : '/api/login'
-        const body = isSignup ? { username, password, email } : { username, password }
+        const body     = isSignup ? { username, password, email } : { username, password }
 
         try {
-            const res = await fetch(`${API}${endpoint}`, {
+            const res  = await fetch(`${API}${endpoint}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body)
@@ -30,8 +31,7 @@ export default function LoginPage({ onLogin }) {
             } else {
                 if (isSignup) {
                     setIsSignup(false)
-                    setError('')
-                    alert('Account created! Please login.')
+                    setSuccess('Account created! Please login.')
                 } else {
                     onLogin({ user_id: data.user_id, username: data.username, role: data.role })
                 }
@@ -70,7 +70,8 @@ export default function LoginPage({ onLogin }) {
                         <input id="password" name="password" type="password" placeholder="Enter password" required />
                     </div>
 
-                    {error && <p className="login-error">{error}</p>}
+                    {error   && <p className="login-error">{error}</p>}
+                    {success && <p className="login-success">{success}</p>}
 
                     <button type="submit" className="btn btn-primary login-btn" disabled={loading}>
                         {loading ? '...' : isSignup ? 'Create Account' : 'Login'}
@@ -79,7 +80,7 @@ export default function LoginPage({ onLogin }) {
 
                 <p className="login-toggle">
                     {isSignup ? 'Already have an account?' : "Don't have an account?"}{' '}
-                    <span onClick={() => { setIsSignup(!isSignup); setError('') }}>
+                    <span onClick={() => { setIsSignup(!isSignup); setError(''); setSuccess('') }}>
                         {isSignup ? 'Login' : 'Sign Up'}
                     </span>
                 </p>

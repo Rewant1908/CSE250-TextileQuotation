@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
-
-const API = 'http://localhost:5000'
+import API from '../api'
 
 const STATUS_COLORS = {
     pending:  { bg: '#78350f44', color: '#fbbf24', border: '#f59e0b55' },
@@ -15,13 +14,17 @@ export default function QuotationHistory({ user }) {
     const [detail, setDetail]         = useState(null)
     const [declineId, setDeclineId]   = useState(null)
     const [reason, setReason]         = useState('')
+    const [toast, setToast]           = useState(null)
 
     const isAdmin = user?.role === 'admin'
 
+    const showToast = (msg, type) => {
+        setToast({ msg, type })
+        setTimeout(() => setToast(null), 3500)
+    }
+
     const load = () => {
-        const url = isAdmin
-            ? `${API}/api/quotations?role=admin`
-            : `${API}/api/quotations?user_id=${user.user_id}&role=user`
+        const url = `${API}/api/quotations?user_id=${user.user_id}`
         fetch(url)
             .then(r => r.json())
             .then(data => { setQuotations(Array.isArray(data) ? data : []); setLoading(false) })
@@ -44,7 +47,7 @@ export default function QuotationHistory({ user }) {
             body: JSON.stringify({ status, decline_reason, user_id: user?.user_id })
         })
         const data = await res.json()
-        if (!res.ok) { alert(data.error); return }
+        if (!res.ok) { showToast(data.error || 'Action failed', 'error'); return }
         setDeclineId(null)
         setReason('')
         load()
@@ -55,6 +58,7 @@ export default function QuotationHistory({ user }) {
     return (
         <div className="card">
             <h2>🧾 {isAdmin ? 'All Quotation Requests' : 'My Quotations'}</h2>
+            {toast && <div className={`toast toast-${toast.type}`}>{toast.msg}</div>}
             <table>
                 <thead>
                 <tr>
@@ -74,7 +78,7 @@ export default function QuotationHistory({ user }) {
                     const s = STATUS_COLORS[q.status] || STATUS_COLORS.pending
                     return (
                         <>
-                            <tr key={q.quotation_id}>
+                            <tr key={`row-${q.quotation_id}`}>
                                 <td>#{q.quotation_id}</td>
                                 <td>{q.customer_name}</td>
                                 {isAdmin && <td style={{ color: '#94a3b8' }}>{q.username || '—'}</td>}
@@ -156,6 +160,7 @@ export default function QuotationHistory({ user }) {
                                                         <td>{item.quantity} m</td>
                                                         <td>₹ {Number(item.unit_price_at_time).toFixed(2)}</td>
                                                         <td>₹ {Number(item.line_total).toFixed(2)}</td>
+
                                                     </tr>
                                                 ))}
                                                 </tbody>
