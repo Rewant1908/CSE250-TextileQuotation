@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-const API = 'http://localhost:5000'
+import API from '../api'
 
 export default function CustomerForm() {
     const [form, setForm] = useState({ customer_name: '', contact_phone: '', email: '' })
