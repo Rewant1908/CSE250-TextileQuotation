@@ -1,8 +1,7 @@
 -- =============================================================
 -- KT IMPEX — Database Schema
 -- Database : kt_impex
--- Engine   : MariaDB / InnoDB
--- Charset  : utf8mb4 (utf8mb4_general_ci)
+-- Engine   : MariaDB
 -- =============================================================
 
 SET FOREIGN_KEY_CHECKS = 0;
@@ -34,7 +33,7 @@ CREATE TABLE `users` (
   `updated_at` timestamp                NULL    DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`user_id`),
   UNIQUE KEY `uq_username` (`username`)
-) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ;
 
 
 -- =============================================================
@@ -50,7 +49,7 @@ CREATE TABLE `customers` (
   PRIMARY KEY (`customer_id`),
   CONSTRAINT `chk_customer_email_fmt`
     CHECK (`email` IS NULL OR `email` LIKE '%@%.%')
-) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ;
 
 
 -- =============================================================
@@ -65,7 +64,7 @@ CREATE TABLE `products` (
   `created_at`   timestamp NULL DEFAULT current_timestamp(),
   `updated_at`   timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`product_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ;
 
 
 -- =============================================================
@@ -95,7 +94,7 @@ CREATE TABLE `quotations` (
   CONSTRAINT `fk_quot_user`
     FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`)
     ON DELETE SET NULL
-) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ;
 
 
 -- =============================================================
@@ -124,8 +123,5 @@ CREATE TABLE `quotation_items` (
     CHECK (`quantity` > 0),
   CONSTRAINT `chk_unit_price`
     CHECK (`unit_price_at_time` > 0)
-) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ;
 
--- =============================================================
--- Schema complete.
--- =============================================================
