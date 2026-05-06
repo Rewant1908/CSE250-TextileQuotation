@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react'
-import ProductCatalogue from './components/ProductCatalogue'
+import { useState } from 'react'
 import CustomerForm from './components/CustomerForm'
 import QuotationForm from './components/QuotationForm'
 import QuotationHistory from './components/QuotationHistory'
@@ -7,7 +6,7 @@ import AdminProductManager from './components/AdminProductManager'
 import LoginPage from './components/LoginPage'
 import './App.css'
 
-const USER_TABS  = ['Products', 'Register Customer', 'Create Quotation', 'My Quotations']
+const USER_TABS  = ['Register Dealer', 'Create Quotation', 'My Quotations']
 const ADMIN_TABS = ['Quotation Requests', 'Manage Products']
 
 const STORAGE_KEY = 'kt_impex_user'
@@ -42,13 +41,15 @@ function App() {
         <div className="app">
             <header className="navbar">
                 <div className="brand">
-                    <span className="brand-icon">🧵</span>
-                    <span className="brand-name">KT Impex</span>
-                    <span className="brand-sub">Textile Quotation System</span>
+                    <span className="brand-mark">KT</span>
+                    <span className="brand-copy">
+                        <span className="brand-name">KT Impex</span>
+                        <span className="brand-sub">Premium Textile Wholesale</span>
+                    </span>
                 </div>
-                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{ fontSize: '13px', color: '#94a3b8' }}>
-                        {isAdmin ? '🔐 Admin' : '👤'} {user.username}
+                <div className="userbar">
+                    <span className="user-pill">
+                        {isAdmin ? 'Admin' : 'Dealer'}: {user.username}
                     </span>
                     <button className="btn btn-logout" onClick={handleLogout}>Logout</button>
                 </div>
@@ -72,16 +73,15 @@ function App() {
                     </>
                 ) : (
                     <>
-                        {activeTab === 0 && <ProductCatalogue />}
-                        {activeTab === 1 && <CustomerForm />}
-                        {activeTab === 2 && <QuotationForm user={user} />}
-                        {activeTab === 3 && <QuotationHistory user={user} />}
+                        {activeTab === 0 && <CustomerForm />}
+                        {activeTab === 1 && <QuotationForm user={user} />}
+                        {activeTab === 2 && <QuotationHistory user={user} />}
                     </>
                 )}
             </main>
 
             <footer className="footer">
-                <p>CSE250 – Database Management Systems &nbsp;|&nbsp; KT Impex Textile Quotation System</p>
+                <p>KT Impex, Birgunj, Nepal | Dealer quotation and factory sourcing portal</p>
             </footer>
         </div>
     )

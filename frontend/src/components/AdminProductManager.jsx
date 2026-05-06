@@ -55,7 +55,7 @@ export default function AdminProductManager({ user }) {
             const msg  = data.error || 'Delete failed'
             const isFK = msg.includes('foreign key') || msg.includes('a referenced row')
             showToast(
-                isFK ? 'Cannot delete — this product is used in existing quotations.' : `Error: ${msg}`,
+                isFK ? 'Cannot delete: this product is used in existing quotations.' : `Error: ${msg}`,
                 'error'
             )
             return
@@ -66,7 +66,7 @@ export default function AdminProductManager({ user }) {
 
     return (
         <div className="card">
-            <h2>🛠 Manage Products & Pricing</h2>
+            <h2>Manage Products & Pricing</h2>
             {toast && <div className={`toast toast-${toast.type}`}>{toast.msg}</div>}
 
             <div className="form-grid" style={{ marginBottom: '20px' }}>
@@ -81,13 +81,11 @@ export default function AdminProductManager({ user }) {
                         <option value="">Select Category</option>
                         <option value="Suiting">Suiting</option>
                         <option value="Shirting">Shirting</option>
-                        <option value="Furnishing">Furnishing</option>
-                        <option value="Denim">Denim</option>
-                        <option value="Knitwear">Knitwear</option>
+                        <option value="Dress Material">Dress Material</option>
                     </select>
                 </div>
                 <div className="form-group">
-                    <label>Base Price (₹/m)</label>
+                    <label>Base Price (NPR/m)</label>
                     <input type="number" placeholder="e.g. 450" value={form.base_price}
                         onChange={e => setForm({ ...form, base_price: e.target.value })} />
                 </div>
@@ -95,7 +93,7 @@ export default function AdminProductManager({ user }) {
                     <label>&nbsp;</label>
                     <div style={{ display: 'flex', gap: '8px' }}>
                         <button className="btn btn-primary" onClick={handleSave}>
-                            {editId ? '💾 Update' : '＋ Add Product'}
+                            {editId ? 'Update' : 'Add Product'}
                         </button>
                         {editId && (
                             <button className="btn btn-logout" onClick={() => { setEditId(null); setForm({ product_name: '', category: '', base_price: '' }) }}>
@@ -108,18 +106,18 @@ export default function AdminProductManager({ user }) {
 
             <table>
                 <thead>
-                <tr><th>ID</th><th>Product</th><th>Category</th><th>Price (₹/m)</th><th>Actions</th></tr>
+                <tr><th>ID</th><th>Product</th><th>Category</th><th>Price (NPR/m)</th><th>Actions</th></tr>
                 </thead>
                 <tbody>
                 {products.map(p => (
                     <tr key={p.product_id}>
                         <td>#{p.product_id}</td>
                         <td>{p.product_name}</td>
-                        <td><span className={`badge badge-${p.category?.toLowerCase()}`}>{p.category}</span></td>
-                        <td style={{ color: '#f59e0b', fontWeight: 600 }}>₹ {Number(p.base_price).toFixed(2)}</td>
+                        <td><span className={`badge badge-${p.category?.toLowerCase().replace(' ', '-')}`}>{p.category}</span></td>
+                        <td className="price-accent">NPR {Number(p.base_price).toFixed(2)}</td>
                         <td style={{ display: 'flex', gap: '8px' }}>
-                            <button className="btn btn-accept" onClick={() => handleEdit(p)}>✎ Edit</button>
-                            <button className="btn btn-decline" onClick={() => handleDelete(p.product_id)}>🗑 Delete</button>
+                            <button className="btn btn-accept" onClick={() => handleEdit(p)}>Edit</button>
+                            <button className="btn btn-decline" onClick={() => handleDelete(p.product_id)}>Delete</button>
                         </td>
                     </tr>
                 ))}

@@ -10,11 +10,4 @@ const pool = createPool({
     connectionLimit: 5
 });
 
-pool.getConnection()
-    .then(conn => {
-        console.log("✅ MariaDB Connected to KT Impex Engine");
-        conn.release();
-    })
-    .catch(err => console.error("❌ DB Connection Error: " + err));
-
 export default pool;

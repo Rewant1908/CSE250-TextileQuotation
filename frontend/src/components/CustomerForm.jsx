@@ -37,12 +37,12 @@ export default function CustomerForm() {
 
     return (
         <div className="card">
-            <h2>👤 Register Customer</h2>
+            <h2>Register Dealer</h2>
             {toast && <div className={`toast toast-${toast.type}`}>{toast.msg}</div>}
             <form onSubmit={handleSubmit}>
                 <div className="form-grid">
                     <div className="form-group full">
-                        <label>Customer Name *</label>
+                        <label>Dealer / Firm Name *</label>
                         <input
                             type="text"
                             placeholder="e.g. Rajesh Textiles"

@@ -4,4 +4,6 @@ INSERT INTO products (product_name, category, base_price) VALUES
                                                               ('Classic Linen Suiting', 'Suiting', 720.00),
                                                               ('White Cotton Shirting', 'Shirting', 320.00),
                                                               ('Oxford Stripe Shirting', 'Shirting', 380.00),
-                                                              ('Premium Poplin Shirting', 'Shirting', 290.00);
+                                                              ('Premium Poplin Shirting', 'Shirting', 290.00),
+                                                              ('Printed Dress Material', 'Dress Material', 410.00),
+                                                              ('Designer Dress Material', 'Dress Material', 560.00);

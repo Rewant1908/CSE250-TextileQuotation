@@ -33,8 +33,8 @@ export default function QuotationForm({ user }) {
     }
 
     const subtotal   = items.reduce((sum, item) => sum + (getPrice(item.product_id) * (parseFloat(item.quantity) || 0)), 0)
-    const gst        = subtotal * 0.18
-    const grandTotal = subtotal + gst
+    const vat        = subtotal * 0.13
+    const grandTotal = subtotal + vat
 
     const handleSubmit = async (e) => {
         e.preventDefault()
@@ -71,7 +71,7 @@ export default function QuotationForm({ user }) {
 
     return (
         <div className="card">
-            <h2>📋 Create Quotation</h2>
+            <h2>Create Quotation</h2>
             {toast && <div className={`toast toast-${toast.type}`}>{toast.msg}</div>}
             <form onSubmit={handleSubmit}>
                 <div className="form-group" style={{ marginBottom: '20px', maxWidth: '300px' }}>
@@ -91,7 +91,7 @@ export default function QuotationForm({ user }) {
                                 <option value="">Select Product</option>
                                 {products.map(p => (
                                     <option key={p.product_id} value={p.product_id}>
-                                        {p.product_name} — ₹{Number(p.base_price).toFixed(2)}/m
+                                        {p.product_name} - NPR {Number(p.base_price).toFixed(2)}/m
                                     </option>
                                 ))}
                             </select>
@@ -104,7 +104,7 @@ export default function QuotationForm({ user }) {
                                 onChange={e => updateItem(i, 'quantity', e.target.value)}
                             />
                             {items.length > 1 && (
-                                <button type="button" className="btn btn-danger" onClick={() => removeItem(i)}>✕</button>
+                                <button type="button" className="btn btn-danger" onClick={() => removeItem(i)}>Remove</button>
                             )}
                         </div>
                     ))}
@@ -112,9 +112,9 @@ export default function QuotationForm({ user }) {
                 <button type="button" className="btn-add" onClick={addItem}>+ Add Product</button>
                 {subtotal > 0 && (
                     <div className="amount-box">
-                        <div className="amount-row"><span>Subtotal</span><span>₹ {subtotal.toFixed(2)}</span></div>
-                        <div className="amount-row"><span>GST (18%)</span><span>₹ {gst.toFixed(2)}</span></div>
-                        <div className="amount-row total"><span>Grand Total</span><span>₹ {grandTotal.toFixed(2)}</span></div>
+                        <div className="amount-row"><span>Subtotal</span><span>NPR {subtotal.toFixed(2)}</span></div>
+                        <div className="amount-row"><span>VAT (13%)</span><span>NPR {vat.toFixed(2)}</span></div>
+                        <div className="amount-row total"><span>Grand Total</span><span>NPR {grandTotal.toFixed(2)}</span></div>
                     </div>
                 )}
                 <div className="form-actions">

@@ -7,7 +7,13 @@ import { checkPermission } from './middleware/checkPermission.js';
 const app = express();
 
 app.use(cors({
-    origin: ['http://localhost:5173', 'http://127.0.0.1:5500'],
+    origin: [
+        'http://localhost:5173',
+        'http://127.0.0.1:5173',
+        'http://localhost:5174',
+        'http://127.0.0.1:5174',
+        'http://127.0.0.1:5500'
+    ],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
 }));
 app.use(express.json());
@@ -219,7 +225,7 @@ app.get('/api/quotations', async (req, res) => {
         if (requester.role === 'admin') {
             rows = await conn.query(
                 `SELECT q.quotation_id, c.customer_name, c.contact_phone, c.email,
-                        q.total_amount, ROUND(q.total_amount * 1.18, 2) AS grand_total,
+                        q.total_amount, ROUND(q.total_amount * 1.13, 2) AS grand_total,
                         q.status, q.decline_reason, q.created_at, u.username
                  FROM quotations q
                  JOIN customers c ON q.customer_id = c.customer_id
@@ -229,7 +235,7 @@ app.get('/api/quotations', async (req, res) => {
         } else {
             rows = await conn.query(
                 `SELECT q.quotation_id, c.customer_name, c.contact_phone, c.email,
-                        q.total_amount, ROUND(q.total_amount * 1.18, 2) AS grand_total,
+                        q.total_amount, ROUND(q.total_amount * 1.13, 2) AS grand_total,
                         q.status, q.decline_reason, q.created_at
                  FROM quotations q
                  JOIN customers c ON q.customer_id = c.customer_id
@@ -256,8 +262,8 @@ app.get('/api/quotations/:id', async (req, res) => {
         conn = await pool.getConnection();
         const [quotation] = await conn.query(
             `SELECT q.quotation_id, c.customer_name, c.contact_phone, c.email,
-                    q.total_amount, ROUND(q.total_amount * 0.18, 2) AS gst_18,
-                    ROUND(q.total_amount * 1.18, 2) AS grand_total,
+                    q.total_amount, ROUND(q.total_amount * 0.13, 2) AS vat_13,
+                    ROUND(q.total_amount * 1.13, 2) AS grand_total,
                     q.status, q.decline_reason, q.created_at
              FROM quotations q
              JOIN customers c ON q.customer_id = c.customer_id

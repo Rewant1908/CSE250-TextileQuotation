@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import API from '../api'
 
 const STATUS_COLORS = {
@@ -23,15 +23,15 @@ export default function QuotationHistory({ user }) {
         setTimeout(() => setToast(null), 3500)
     }
 
-    const load = () => {
+    const load = useCallback(() => {
         const url = `${API}/api/quotations?user_id=${user.user_id}`
         fetch(url)
             .then(r => r.json())
             .then(data => { setQuotations(Array.isArray(data) ? data : []); setLoading(false) })
             .catch(() => setLoading(false))
-    }
+    }, [user.user_id])
 
-    useEffect(() => { load() }, [])
+    useEffect(() => { load() }, [load])
 
     const viewDetail = async (id) => {
         if (selected === id) { setSelected(null); setDetail(null); return }
@@ -57,7 +57,7 @@ export default function QuotationHistory({ user }) {
 
     return (
         <div className="card">
-            <h2>🧾 {isAdmin ? 'All Quotation Requests' : 'My Quotations'}</h2>
+            <h2>{isAdmin ? 'All Quotation Requests' : 'My Quotations'}</h2>
             {toast && <div className={`toast toast-${toast.type}`}>{toast.msg}</div>}
             <table>
                 <thead>
@@ -81,10 +81,10 @@ export default function QuotationHistory({ user }) {
                             <tr key={`row-${q.quotation_id}`}>
                                 <td>#{q.quotation_id}</td>
                                 <td>{q.customer_name}</td>
-                                {isAdmin && <td style={{ color: '#94a3b8' }}>{q.username || '—'}</td>}
-                                <td>{q.contact_phone || '—'}</td>
-                                <td>₹ {Number(q.total_amount).toFixed(2)}</td>
-                                <td style={{ color: '#f59e0b', fontWeight: 600 }}>₹ {Number(q.grand_total).toFixed(2)}</td>
+                                {isAdmin && <td style={{ color: '#94a3b8' }}>{q.username || '-'}</td>}
+                                <td>{q.contact_phone || '-'}</td>
+                                <td>NPR {Number(q.total_amount).toFixed(2)}</td>
+                                <td className="price-accent">NPR {Number(q.grand_total).toFixed(2)}</td>
                                 <td>
                                     <span className="badge" style={{ background: s.bg, color: s.color, border: `1px solid ${s.border}` }}>
                                         {q.status}
@@ -97,12 +97,12 @@ export default function QuotationHistory({ user }) {
                                     </button>
                                     {isAdmin && q.status === 'pending' && (
                                         <>
-                                            <button className="btn btn-accept" onClick={() => updateStatus(q.quotation_id, 'accepted')}>✓ Accept</button>
-                                            <button className="btn btn-decline" onClick={() => { setDeclineId(q.quotation_id); setReason('') }}>✕ Decline</button>
+                                            <button className="btn btn-accept" onClick={() => updateStatus(q.quotation_id, 'accepted')}>Accept</button>
+                                            <button className="btn btn-decline" onClick={() => { setDeclineId(q.quotation_id); setReason('') }}>Decline</button>
                                         </>
                                     )}
                                     {isAdmin && q.status !== 'pending' && (
-                                        <button className="btn btn-reset" onClick={() => updateStatus(q.quotation_id, 'pending')}>↺ Reset</button>
+                                        <button className="btn btn-reset" onClick={() => updateStatus(q.quotation_id, 'pending')}>Reset</button>
                                     )}
                                 </td>
                             </tr>
@@ -111,7 +111,7 @@ export default function QuotationHistory({ user }) {
                                 <tr key={`decline-${q.quotation_id}`}>
                                     <td colSpan={isAdmin ? 9 : 8}>
                                         <div className="decline-box">
-                                            <p className="decline-label">📝 Provide a reason for declining Quotation #{q.quotation_id}:</p>
+                                            <p className="decline-label">Provide a reason for declining Quotation #{q.quotation_id}:</p>
                                             <textarea
                                                 className="decline-textarea"
                                                 placeholder="e.g. Quantity exceeds current stock, incorrect fabric type requested..."
@@ -138,7 +138,7 @@ export default function QuotationHistory({ user }) {
                                 <tr key={`reason-${q.quotation_id}`}>
                                     <td colSpan={8}>
                                         <div className="decline-reason-box">
-                                            <span className="decline-reason-label">🚨 Reason for Decline:</span>
+                                            <span className="decline-reason-label">Reason for Decline:</span>
                                             <span className="decline-reason-text">{q.decline_reason}</span>
                                         </div>
                                     </td>
@@ -149,17 +149,17 @@ export default function QuotationHistory({ user }) {
                                 <tr key={`detail-${q.quotation_id}`}>
                                     <td colSpan={isAdmin ? 9 : 8}>
                                         <div className="detail-panel">
-                                            <h3>Line Items — Quotation #{detail.quotation_id}</h3>
+                                            <h3>Line Items - Quotation #{detail.quotation_id}</h3>
                                             <table>
                                                 <thead><tr><th>Product</th><th>Category</th><th>Qty (m)</th><th>Unit Price</th><th>Line Total</th></tr></thead>
                                                 <tbody>
                                                 {detail.items?.map((item, i) => (
                                                     <tr key={i}>
                                                         <td>{item.product_name}</td>
-                                                        <td><span className={`badge badge-${item.category?.toLowerCase()}`}>{item.category}</span></td>
+                                                        <td><span className={`badge badge-${item.category?.toLowerCase().replace(' ', '-')}`}>{item.category}</span></td>
                                                         <td>{item.quantity} m</td>
-                                                        <td>₹ {Number(item.unit_price_at_time).toFixed(2)}</td>
-                                                        <td>₹ {Number(item.line_total).toFixed(2)}</td>
+                                                        <td>NPR {Number(item.unit_price_at_time).toFixed(2)}</td>
+                                                        <td>NPR {Number(item.line_total).toFixed(2)}</td>
 
                                                     </tr>
                                                 ))}
@@ -167,7 +167,7 @@ export default function QuotationHistory({ user }) {
                                             </table>
                                             {detail.decline_reason && (
                                                 <div className="decline-reason-box" style={{ marginTop: '12px' }}>
-                                                    <span className="decline-reason-label">🚨 Decline Reason:</span>
+                                                    <span className="decline-reason-label">Decline Reason:</span>
                                                     <span className="decline-reason-text">{detail.decline_reason}</span>
                                                 </div>
                                             )}
