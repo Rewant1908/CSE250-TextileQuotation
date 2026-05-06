@@ -406,6 +406,31 @@ tr:hover td { background: #fff8ee; }
     mix-blend-mode: screen;
     pointer-events: none;
 }
+.cinematic-showcase::after {
+    content: '';
+    position: absolute;
+    left: 8%;
+    right: 8%;
+    bottom: 18px;
+    height: 84px;
+    border-radius: 50%;
+    background: radial-gradient(ellipse at center, rgba(255, 248, 237, 0.18), rgba(0, 0, 0, 0.02) 42%, transparent 70%);
+    filter: blur(8px);
+    animation: floorGlow 6.5s ease-in-out infinite alternate;
+    pointer-events: none;
+}
+.camera-scan {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 28%;
+    left: -34%;
+    background: linear-gradient(90deg, transparent, rgba(255, 248, 237, 0.13), transparent);
+    transform: skewX(-12deg);
+    animation: macroScan 9s ease-in-out infinite;
+    pointer-events: none;
+    z-index: 4;
+}
 .studio-light {
     position: absolute;
     width: 42%;
@@ -432,6 +457,15 @@ tr:hover td { background: #fff8ee; }
     background: linear-gradient(90deg, transparent, #e6c177, #fff8ed, #b98945, transparent);
     box-shadow: 0 0 26px rgba(255, 248, 237, 0.34);
 }
+.rack-line::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 8px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,248,237,0.36), transparent);
+}
 .fabric-track {
     position: absolute;
     top: 34px;
@@ -453,7 +487,8 @@ tr:hover td { background: #fff8ee; }
         inset 20px 0 30px rgba(255, 255, 255, 0.08),
         inset -22px 0 28px rgba(0, 0, 0, 0.22),
         0 24px 38px rgba(0, 0, 0, 0.32);
-    animation: clothDrift 5.6s ease-in-out infinite;
+    animation: clothDrift 5.6s ease-in-out infinite, sampleDepth 18s ease-in-out infinite alternate;
+    will-change: transform, border-radius;
 }
 .fabric-sample::before {
     content: '';
@@ -478,6 +513,19 @@ tr:hover td { background: #fff8ee; }
     border-radius: 30px 30px 0 0;
     transform: translateX(-50%);
 }
+.fabric-sample span::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -336px;
+    height: 312px;
+    background:
+        linear-gradient(90deg, rgba(255,255,255,0.08), transparent 14%, rgba(0,0,0,0.1) 30%, transparent 44%, rgba(255,255,255,0.07) 60%, transparent),
+        repeating-linear-gradient(0deg, rgba(0,0,0,0.05) 0 1px, transparent 1px 18px);
+    border-radius: 0 0 18px 18px;
+    pointer-events: none;
+}
 .fabric-sample span {
     position: absolute;
     left: 12px;
@@ -495,17 +543,32 @@ tr:hover td { background: #fff8ee; }
         repeating-linear-gradient(135deg, rgba(255,255,255,0.05) 0 2px, transparent 2px 8px),
         linear-gradient(100deg, #2c2a28, #5f1111 46%, #292521);
 }
+.sample-twill span::before {
+    background:
+        linear-gradient(90deg, rgba(255,255,255,0.08), transparent 16%, rgba(0,0,0,0.16) 32%, transparent 50%, rgba(255,255,255,0.07) 66%, transparent),
+        repeating-linear-gradient(135deg, rgba(255,255,255,0.06) 0 2px, transparent 2px 10px);
+}
 .sample-stripe {
     animation-delay: -0.8s;
     background:
         repeating-linear-gradient(90deg, #f4eadb 0 18px, #7f1d1d 18px 21px, #f4eadb 21px 34px, #202020 34px 36px),
         linear-gradient(100deg, transparent, rgba(0,0,0,0.22));
 }
+.sample-stripe span::before {
+    background:
+        linear-gradient(90deg, rgba(255,255,255,0.16), transparent 22%, rgba(0,0,0,0.1) 42%, transparent 62%),
+        repeating-linear-gradient(90deg, rgba(0,0,0,0.04) 0 1px, transparent 1px 16px);
+}
 .sample-cotton {
     animation-delay: -1.5s;
     background:
         radial-gradient(circle at 28% 24%, rgba(255,255,255,0.78), transparent 19%),
         linear-gradient(120deg, #e9f4f0, #c7ddd8 35%, #f8e6c6 66%, #fffdf8);
+}
+.sample-cotton span::before {
+    background:
+        radial-gradient(circle at 22% 18%, rgba(255,255,255,0.34), transparent 20%),
+        linear-gradient(90deg, rgba(255,255,255,0.16), transparent 28%, rgba(0,0,0,0.05) 46%, transparent 72%);
 }
 .sample-cashmere {
     animation-delay: -2.4s;
@@ -515,17 +578,33 @@ tr:hover td { background: #fff8ee; }
         linear-gradient(120deg, #c9b8a2, #8e7b68 48%, #d8c6ad);
     filter: saturate(0.94);
 }
+.sample-cashmere span::before {
+    background:
+        radial-gradient(circle at 48% 26%, rgba(255,255,255,0.22), transparent 34%),
+        repeating-linear-gradient(0deg, rgba(255,255,255,0.12) 0 1px, transparent 1px 6px);
+    filter: blur(0.6px);
+}
 .sample-uniform {
     animation-delay: -3s;
     background:
         repeating-linear-gradient(90deg, #1f3c6d 0 20px, #f4eadb 20px 23px, #5f1111 23px 25px, #1f3c6d 25px 42px),
         linear-gradient(110deg, transparent, rgba(0,0,0,0.24));
 }
+.sample-uniform span::before {
+    background:
+        linear-gradient(90deg, rgba(255,255,255,0.09), transparent 18%, rgba(0,0,0,0.13) 38%, transparent 62%),
+        repeating-linear-gradient(0deg, transparent 0 20px, rgba(255,255,255,0.12) 20px 22px, transparent 22px 38px);
+}
 .sample-dress {
     animation-delay: -4s;
     background:
         radial-gradient(circle at 18% 18%, rgba(255,255,255,0.42), transparent 18%),
         linear-gradient(135deg, #8f1d1d, #b98945 52%, #f4eadb);
+}
+.sample-dress span::before {
+    background:
+        radial-gradient(circle at 16% 18%, rgba(255,255,255,0.22), transparent 18%),
+        linear-gradient(90deg, rgba(255,255,255,0.11), transparent 24%, rgba(0,0,0,0.08) 48%, transparent 76%);
 }
 .sample-cashmere::before { filter: blur(0.4px); opacity: 0.82; }
 .sample-twill::before,
@@ -544,18 +623,18 @@ tr:hover td { background: #fff8ee; }
 }
 .hero-photo-main {
     inset: 0 34px 70px 0;
-    background-image:
-        linear-gradient(180deg, rgba(95, 17, 17, 0.05), rgba(95, 17, 17, 0.25)),
-        url('https://images.unsplash.com/photo-1523381294911-8d3cead13475?auto=format&fit=crop&w=1200&q=82');
+    background:
+        repeating-linear-gradient(135deg, rgba(255,255,255,0.08) 0 2px, transparent 2px 8px),
+        linear-gradient(130deg, #2f2a28, #6f1717 48%, #201817);
 }
 .hero-photo-small {
     right: 0;
     bottom: 0;
     width: 62%;
     height: 42%;
-    background-image:
-        linear-gradient(180deg, rgba(95, 17, 17, 0.08), rgba(95, 17, 17, 0.24)),
-        url('https://images.unsplash.com/photo-1558769132-cb1aea458c5e?auto=format&fit=crop&w=900&q=82');
+    background:
+        repeating-linear-gradient(90deg, #fff8ed 0 18px, #7f1d1d 18px 21px, #fff8ed 21px 36px, #22354b 36px 38px),
+        linear-gradient(120deg, rgba(255,255,255,0.34), rgba(0,0,0,0.18));
 }
 
 .public-section {
@@ -673,12 +752,37 @@ tr:hover td { background: #fff8ee; }
     font-size: 30px;
     font-weight: 700;
 }
-.tile-suiting { background-image: url('https://images.unsplash.com/photo-1523381294911-8d3cead13475?auto=format&fit=crop&w=900&q=82'); }
-.tile-shirting { background-image: url('https://images.unsplash.com/photo-1558769132-cb1aea458c5e?auto=format&fit=crop&w=900&q=82'); }
-.tile-cotton { background-image: url('https://images.unsplash.com/photo-1618220372341-8c4701c07d8f?auto=format&fit=crop&w=900&q=82'); }
-.tile-fine-cashmere { background-image: url('https://images.unsplash.com/photo-1603252109303-2751441dd157?auto=format&fit=crop&w=900&q=82'); }
-.tile-dress-material { background-image: url('https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?auto=format&fit=crop&w=900&q=82'); }
-.tile-uniform-fabric { background-image: url('https://images.unsplash.com/photo-1523381210434-271e8be1f52b?auto=format&fit=crop&w=900&q=82'); }
+.tile-suiting {
+    background:
+        repeating-linear-gradient(135deg, rgba(255,255,255,0.08) 0 2px, transparent 2px 8px),
+        linear-gradient(130deg, #252321, #5f1111 46%, #191514);
+}
+.tile-shirting {
+    background:
+        repeating-linear-gradient(90deg, #fff8ed 0 18px, #7f1d1d 18px 21px, #fff8ed 21px 36px, #24384f 36px 38px),
+        linear-gradient(120deg, rgba(255,255,255,0.3), rgba(0,0,0,0.16));
+}
+.tile-cotton {
+    background:
+        radial-gradient(circle at 24% 22%, rgba(255,255,255,0.72), transparent 20%),
+        linear-gradient(120deg, #eef8f4, #c8ddd8 42%, #fff2d5 100%);
+}
+.tile-fine-cashmere {
+    background:
+        radial-gradient(circle at 50% 28%, rgba(255,255,255,0.5), transparent 34%),
+        repeating-linear-gradient(0deg, rgba(255,255,255,0.12) 0 1px, transparent 1px 5px),
+        linear-gradient(120deg, #c9b8a2, #8e7b68 48%, #d8c6ad);
+}
+.tile-dress-material {
+    background:
+        radial-gradient(circle at 18% 18%, rgba(255,255,255,0.42), transparent 18%),
+        linear-gradient(135deg, #8f1d1d, #b98945 52%, #f4eadb);
+}
+.tile-uniform-fabric {
+    background:
+        repeating-linear-gradient(0deg, transparent 0 24px, rgba(255,255,255,0.22) 24px 27px, transparent 27px 44px, rgba(95,17,17,0.42) 44px 47px),
+        repeating-linear-gradient(90deg, #1f3c6d 0 30px, #f4eadb 30px 34px, #8f1d1d 34px 37px, #1f3c6d 37px 60px);
+}
 
 .split-panel {
     display: grid;
@@ -702,6 +806,43 @@ tr:hover td { background: #fff8ee; }
     min-height: 230px;
     background-size: cover;
     background-position: center;
+    position: relative;
+    overflow: hidden;
+}
+.sample-image::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+        linear-gradient(105deg, transparent 0 28%, rgba(255,255,255,0.42) 42%, transparent 56%),
+        radial-gradient(circle at 20% 18%, rgba(255,255,255,0.28), transparent 18%);
+    mix-blend-mode: screen;
+}
+.sample-image::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+        linear-gradient(90deg, rgba(0,0,0,0.16), transparent 18%, rgba(255,255,255,0.1) 36%, transparent 56%, rgba(0,0,0,0.18)),
+        repeating-linear-gradient(90deg, rgba(255,255,255,0.07) 0 2px, transparent 2px 18px);
+    opacity: 0.72;
+}
+.sample-image-suiting {
+    background:
+        repeating-linear-gradient(135deg, rgba(255,255,255,0.08) 0 2px, transparent 2px 8px),
+        repeating-linear-gradient(45deg, rgba(0,0,0,0.16) 0 1px, transparent 1px 7px),
+        linear-gradient(112deg, #292624 0%, #3b3330 28%, #741717 52%, #28221f 100%);
+}
+.sample-image-shirting {
+    background:
+        repeating-linear-gradient(90deg, #f8f0e2 0 18px, #7f1d1d 18px 21px, #f8f0e2 21px 38px, #203244 38px 40px),
+        linear-gradient(120deg, rgba(255,255,255,0.4), rgba(0,0,0,0.14));
+}
+.sample-image-uniform {
+    background:
+        repeating-linear-gradient(90deg, rgba(255,255,255,0.08) 0 2px, transparent 2px 20px),
+        repeating-linear-gradient(0deg, transparent 0 24px, rgba(255,255,255,0.24) 24px 27px, transparent 27px 44px, rgba(95,17,17,0.42) 44px 47px),
+        repeating-linear-gradient(90deg, #1f3c6d 0 30px, #f4eadb 30px 34px, #8f1d1d 34px 37px, #1f3c6d 37px 60px);
 }
 .sample-body { padding: 20px; }
 .sample-body h3 { color: var(--ink); font-size: 20px; margin: 12px 0 8px; }
@@ -815,6 +956,12 @@ tr:hover td { background: #fff8ee; }
     68% { transform: rotateZ(-0.4deg) skewX(-1deg); }
 }
 
+@keyframes sampleDepth {
+    0% { filter: brightness(0.92) saturate(0.96); }
+    48% { filter: brightness(1.08) saturate(1.08); }
+    100% { filter: brightness(0.98) saturate(1.02); }
+}
+
 @keyframes sheenSweep {
     0%, 18% { transform: translateX(-120%); opacity: 0; }
     42% { opacity: 0.72; }
@@ -824,6 +971,17 @@ tr:hover td { background: #fff8ee; }
 @keyframes lightBreathe {
     from { opacity: 0.32; transform: translateY(0) scale(1); }
     to { opacity: 0.62; transform: translateY(18px) scale(1.08); }
+}
+
+@keyframes macroScan {
+    0%, 18% { left: -34%; opacity: 0; }
+    34% { opacity: 0.65; }
+    62%, 100% { left: 106%; opacity: 0; }
+}
+
+@keyframes floorGlow {
+    from { opacity: 0.44; transform: scaleX(0.88); }
+    to { opacity: 0.78; transform: scaleX(1.08); }
 }
 
 @media (max-width: 900px) {
@@ -887,7 +1045,9 @@ tr:hover td { background: #fff8ee; }
     .fabric-track,
     .fabric-sample,
     .fabric-sample::before,
-    .studio-light {
+    .studio-light,
+    .camera-scan,
+    .cinematic-showcase::after {
         animation: none;
     }
 }

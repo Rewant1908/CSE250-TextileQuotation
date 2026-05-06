@@ -6,19 +6,19 @@ const sampleProducts = [
         name: 'Suit Length Lots',
         type: 'Suiting',
         detail: 'Finished suiting cloth supplied in wholesale lots for suit and pant fabric dealers.',
-        image: 'https://images.unsplash.com/photo-1523381294911-8d3cead13475?auto=format&fit=crop&w=900&q=80',
+        imageClass: 'sample-image-suiting',
     },
     {
         name: 'Shirt & Pant Piece Lots',
         type: 'Shirting',
         detail: 'Shirting and pant-piece fabric lots for tailors, retailers, and local dealer counters.',
-        image: 'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?auto=format&fit=crop&w=900&q=80',
+        imageClass: 'sample-image-shirting',
     },
     {
         name: 'School Uniform Fabric Lots',
         type: 'Dress Material',
         detail: 'Durable finished cloth lots suitable for school dress, uniform, and institutional fabric demand.',
-        image: 'https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?auto=format&fit=crop&w=900&q=80',
+        imageClass: 'sample-image-uniform',
     },
 ]
 
@@ -102,6 +102,7 @@ export default function LoginPage({ onLogin }) {
                     <div className="cinematic-showcase" aria-label="Animated hanging fabric samples">
                         <div className="studio-light light-left" />
                         <div className="studio-light light-right" />
+                        <div className="camera-scan" />
                         <div className="fabric-rack">
                             <div className="rack-line" />
                             <div className="fabric-track">
@@ -208,7 +209,7 @@ export default function LoginPage({ onLogin }) {
                     <div className="sample-grid">
                         {sampleProducts.map(product => (
                             <article className="sample-card" key={product.name}>
-                                <div className="sample-image" style={{ backgroundImage: `url(${product.image})` }} />
+                                <div className={`sample-image ${product.imageClass}`} />
                                 <div className="sample-body">
                                     <span className={`badge badge-${product.type.toLowerCase().replace(' ', '-')}`}>
                                         {product.type}

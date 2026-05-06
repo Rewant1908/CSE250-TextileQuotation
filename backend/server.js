@@ -22,6 +22,27 @@ const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const phoneRegex = /^[0-9]{10}$/;
 const SALT_ROUNDS = 10;
 
+app.get('/api/health', async (req, res) => {
+    let conn;
+    try {
+        conn = await pool.getConnection();
+        const [db] = await conn.query('SELECT DATABASE() AS database_name');
+        res.json({
+            api: 'ok',
+            database: 'connected',
+            database_name: db?.database_name || null
+        });
+    } catch (err) {
+        res.status(503).json({
+            api: 'ok',
+            database: 'disconnected',
+            error: err.code || err.message
+        });
+    } finally {
+        if (conn) conn.release();
+    }
+});
+
 // ─── AUTH: SIGNUP ─────────────────────────────────────────────────────────────
 app.post('/api/signup', async (req, res) => {
     const { username, password, email } = req.body;
