@@ -145,8 +145,15 @@ export default function LoginPage({ onLogin }) {
 
                 <section className="public-section founder-section">
                     <div className="founder-card">
-                        <div className="founder-photo" aria-label="Founder image placeholder">
-                            <span>SKA</span>
+                        <div className="founder-photo-wrap">
+                            <img
+                                src="/founder.jpg"
+                                alt="Sandeep Kumar Agrawal – Founder, KT Impex"
+                                className="founder-photo-img"
+                                width="160"
+                                height="160"
+                                loading="lazy"
+                            />
                         </div>
                         <div>
                             <p className="eyebrow">Founder</p>
