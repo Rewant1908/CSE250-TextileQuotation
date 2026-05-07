@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, Component } from 'react'
 import CustomerForm from './components/CustomerForm'
 import QuotationForm from './components/QuotationForm'
 import QuotationHistory from './components/QuotationHistory'
@@ -12,6 +12,47 @@ const USER_TABS  = ['Register Dealer', 'Create Quotation', 'My Quotations']
 const ADMIN_TABS = ['Operations', 'Bale Intake', 'Quotation Requests', 'Manage Products']
 
 const STORAGE_KEY = 'kt_impex_user'
+
+// Error boundary — catches any render crash inside a tab and shows a message
+// instead of a blank white page
+class TabErrorBoundary extends Component {
+    constructor(props) {
+        super(props)
+        this.state = { hasError: false, error: null }
+    }
+    static getDerivedStateFromError(error) {
+        return { hasError: true, error }
+    }
+    componentDidCatch(error, info) {
+        console.error('Tab render error:', error, info)
+    }
+    componentDidUpdate(prevProps) {
+        // Reset when user navigates to a different tab
+        if (prevProps.tabKey !== this.props.tabKey) {
+            this.setState({ hasError: false, error: null })
+        }
+    }
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div style={{ padding: '2rem', maxWidth: 600, margin: '0 auto' }}>
+                    <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '1.5rem' }}>
+                        <h3 style={{ color: '#b91c1c', marginBottom: '0.5rem' }}>Something went wrong loading this tab</h3>
+                        <p style={{ color: '#7f1d1d', fontSize: 14, marginBottom: '1rem' }}>
+                            {this.state.error?.message || 'Unknown error'}
+                        </p>
+                        <button
+                            className="btn btn-primary"
+                            onClick={() => this.setState({ hasError: false, error: null })}>
+                            Try again
+                        </button>
+                    </div>
+                </div>
+            )
+        }
+        return this.props.children
+    }
+}
 
 function App() {
     const [user, setUser] = useState(() => {
@@ -68,20 +109,22 @@ function App() {
             </nav>
 
             <main className="content">
-                {isAdmin ? (
-                    <>
-                        {activeTab === 0 && <OperationsDashboard user={user} />}
-                        {activeTab === 1 && <BaleManager user={user} />}
-                        {activeTab === 2 && <QuotationHistory user={user} />}
-                        {activeTab === 3 && <AdminProductManager user={user} />}
-                    </>
-                ) : (
-                    <>
-                        {activeTab === 0 && <CustomerForm />}
-                        {activeTab === 1 && <QuotationForm user={user} />}
-                        {activeTab === 2 && <QuotationHistory user={user} />}
-                    </>
-                )}
+                <TabErrorBoundary tabKey={activeTab}>
+                    {isAdmin ? (
+                        <>
+                            {activeTab === 0 && <OperationsDashboard user={user} />}
+                            {activeTab === 1 && <BaleManager user={user} />}
+                            {activeTab === 2 && <QuotationHistory user={user} />}
+                            {activeTab === 3 && <AdminProductManager user={user} />}
+                        </>
+                    ) : (
+                        <>
+                            {activeTab === 0 && <CustomerForm />}
+                            {activeTab === 1 && <QuotationForm user={user} />}
+                            {activeTab === 2 && <QuotationHistory user={user} />}
+                        </>
+                    )}
+                </TabErrorBoundary>
             </main>
 
             <footer className="footer">

@@ -22,6 +22,19 @@ function marginPct(cost, sell) {
 }
 
 export default function BaleManager({ user }) {
+    // Hard guard — never render if user object is incomplete
+    if (!user || !user.user_id || !user.role) {
+        return (
+            <div style={{ padding: '2rem', color: 'var(--color-text-muted)' }}>
+                Session error — please log out and log in again.
+            </div>
+        )
+    }
+
+    return <BaleManagerInner user={user} />
+}
+
+function BaleManagerInner({ user }) {
     const [bales, setBales]                   = useState([])
     const [suppliers, setSuppliers]           = useState([])
     const [products, setProducts]             = useState([])
@@ -37,18 +50,23 @@ export default function BaleManager({ user }) {
     const [thanSuccess, setThanSuccess]       = useState('')
     const [submittingThan, setSubmittingThan] = useState(false)
     const [loadingThans, setLoadingThans]     = useState(false)
+    const [fetchError, setFetchError]         = useState('')
 
-    // authHeader MUST be defined before fetchBales useCallback
+    // authHeader defined first — before any useCallback that needs it
     const authHeader = useCallback(
-        () => ({ 'x-user-id': user.user_id, 'x-user-role': user.role }),
-        [user]
+        () => ({ 'x-user-id': String(user.user_id), 'x-user-role': user.role }),
+        [user.user_id, user.role]
     )
 
     const fetchBales = useCallback(async () => {
+        setFetchError('')
         try {
             const res = await API.get('/bales', { headers: authHeader() })
-            setBales(res.data)
-        } catch (e) { console.error(e) }
+            setBales(Array.isArray(res.data) ? res.data : [])
+        } catch (e) {
+            console.error('fetchBales error:', e)
+            setFetchError(e?.response?.data?.error || 'Failed to load bales. Is the backend running?')
+        }
     }, [authHeader])
 
     useEffect(() => {
@@ -156,6 +174,13 @@ export default function BaleManager({ user }) {
         <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 1rem 2rem' }}>
             <h2 style={{ marginBottom: '1.2rem' }}>Bale Intake</h2>
 
+            {fetchError && (
+                <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 6, padding: '0.75rem 1rem', marginBottom: '1.5rem', color: '#b91c1c', fontSize: 14 }}>
+                    ⚠️ {fetchError}
+                    <button onClick={fetchBales} style={{ marginLeft: '1rem', fontSize: 13, color: '#b91c1c', background: 'none', border: '1px solid #b91c1c', borderRadius: 4, padding: '2px 10px', cursor: 'pointer' }}>Retry</button>
+                </div>
+            )}
+
             <section className="card" style={{ marginBottom: '2rem' }}>
                 <h3 style={{ marginBottom: '1rem' }}>Register New Bale</h3>
                 <form onSubmit={handleBaleSubmit}>
@@ -186,7 +211,7 @@ export default function BaleManager({ user }) {
             <section>
                 <h3 style={{ marginBottom: '1rem' }}>All Bales ({bales.length})</h3>
                 {bales.length === 0
-                    ? <p style={{ color: 'var(--color-text-muted)' }}>No bales registered yet.</p>
+                    ? <p style={{ color: 'var(--color-text-muted)' }}>{fetchError ? 'Could not load bales.' : 'No bales registered yet.'}</p>
                     : bales.map(bale => (
                         <div key={bale.bale_id} className="card" style={{ marginBottom: '1rem' }}>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center', justifyContent: 'space-between' }}>
