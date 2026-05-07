@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import API from '../api'
 
 const money = v => `NPR ${Number(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -10,17 +10,19 @@ const emptyForm = {
 }
 
 export default function SaleRecorder({ user }) {
-    const [thans, setThans]         = useState([])
-    const [retailers, setRetailers] = useState([])
-    const [sales, setSales]         = useState([])
-    const [form, setForm]           = useState(emptyForm)
+    const [thans, setThans]               = useState([])
+    const [retailers, setRetailers]       = useState([])
+    const [sales, setSales]               = useState([])
+    const [form, setForm]                 = useState(emptyForm)
     const [selectedThan, setSelectedThan] = useState(null)
-    const [error, setError]         = useState('')
-    const [success, setSuccess]     = useState('')
-    const [saving, setSaving]       = useState(false)
-    const [loading, setLoading]     = useState(true)
-    const [search, setSearch]       = useState('')
-    const [fetchError, setFetchError] = useState('')
+    const [error, setError]               = useState('')
+    const [success, setSuccess]           = useState('')
+    const [saving, setSaving]             = useState(false)
+    const [loading, setLoading]           = useState(true)
+    const [search, setSearch]             = useState('')
+    const [showDropdown, setShowDropdown] = useState(false)
+    const [fetchError, setFetchError]     = useState('')
+    const wrapRef = useRef(null)
 
     const authHeader = useCallback(
         () => ({ 'x-user-id': String(user.user_id), 'x-user-role': user.role }),
@@ -28,8 +30,7 @@ export default function SaleRecorder({ user }) {
     )
 
     const loadAll = useCallback(async () => {
-        setLoading(true)
-        setFetchError('')
+        setLoading(true); setFetchError('')
         try {
             const [thanRes, retailerRes, salesRes] = await Promise.all([
                 API.get('/inventory/search', { params: { q: '' } }),
@@ -40,52 +41,42 @@ export default function SaleRecorder({ user }) {
             setRetailers(Array.isArray(retailerRes.data) ? retailerRes.data : [])
             setSales(Array.isArray(salesRes.data) ? salesRes.data : [])
         } catch (e) {
-            console.error('SaleRecorder loadAll error:', e?.response?.status, e?.response?.data, e?.message)
             setFetchError(e?.response?.data?.error || e?.message || 'Failed to load data')
-        }
-        finally { setLoading(false) }
+        } finally { setLoading(false) }
     }, [authHeader])
 
     useEffect(() => { loadAll() }, [loadAll])
 
-    const handleChange = e => {
-        const { name, value } = e.target
-        setForm(f => ({ ...f, [name]: value }))
-        if (name === 'than_id') {
-            const t = thans.find(t => String(t.than_id) === String(value))
-            setSelectedThan(t || null)
-            if (t) setForm(f => ({ ...f, than_id: value, price: t.selling_price }))
-        }
+    // Close dropdown when clicking outside
+    useEffect(() => {
+        const handler = e => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setShowDropdown(false) }
+        document.addEventListener('mousedown', handler)
+        return () => document.removeEventListener('mousedown', handler)
+    }, [])
+
+    const selectThan = t => {
+        setSelectedThan(t)
+        setSearch(`${t.than_code} — ${[t.color, t.design, t.fabric_type].filter(Boolean).join(' / ')}`)
+        setForm(f => ({ ...f, than_id: String(t.than_id), price: t.selling_price }))
+        setShowDropdown(false)
     }
 
-    const previewMargin = () => {
-        if (!selectedThan || !form.quantity || !form.price) return null
-        return (Number(form.price) - Number(selectedThan.cost_per_meter)) * Number(form.quantity) - Number(form.discount || 0)
+    const clearThan = () => {
+        setSelectedThan(null)
+        setSearch('')
+        setForm(f => ({ ...f, than_id: '', price: '' }))
+        setShowDropdown(false)
     }
 
-    const handleSubmit = async e => {
-        e.preventDefault()
-        setError('')
-        setSuccess('')
-        if (!form.than_id) return setError('Select a Than')
-        if (!form.quantity || Number(form.quantity) <= 0) return setError('Quantity must be > 0')
-        if (!form.price || Number(form.price) <= 0) return setError('Price must be > 0')
-        if (selectedThan && Number(form.quantity) > Number(selectedThan.remaining_stock))
-            return setError(`Only ${selectedThan.remaining_stock}m available`)
-        setSaving(true)
-        try {
-            const res = await API.post('/transactions', form, { headers: authHeader() })
-            setSuccess(`✓ Sale recorded — Margin: ${money(res.data.margin)}`)
-            setForm(emptyForm)
-            setSelectedThan(null)
-            setSearch('')
-            loadAll()
-        } catch (e) { setError(e?.response?.data?.error || 'Sale failed') }
-        finally { setSaving(false) }
+    const handleSearchChange = e => {
+        setSearch(e.target.value)
+        setShowDropdown(true)
+        // If user edits after selecting, clear selection
+        if (selectedThan) { setSelectedThan(null); setForm(f => ({ ...f, than_id: '', price: '' })) }
     }
 
     const filteredThans = thans.filter(t => {
-        if (!search.trim()) return true
+        if (!search.trim() || selectedThan) return true
         const q = search.toLowerCase()
         return (
             t.than_code?.toLowerCase().includes(q) ||
@@ -94,6 +85,32 @@ export default function SaleRecorder({ user }) {
             t.design?.toLowerCase().includes(q)
         )
     })
+
+    const handleChange = e => {
+        const { name, value } = e.target
+        setForm(f => ({ ...f, [name]: value }))
+    }
+
+    const previewMargin = () => {
+        if (!selectedThan || !form.quantity || !form.price) return null
+        return (Number(form.price) - Number(selectedThan.cost_per_meter)) * Number(form.quantity) - Number(form.discount || 0)
+    }
+
+    const handleSubmit = async e => {
+        e.preventDefault(); setError(''); setSuccess('')
+        if (!form.than_id) return setError('Select a Than from the dropdown')
+        if (!form.quantity || Number(form.quantity) <= 0) return setError('Quantity must be > 0')
+        if (!form.price || Number(form.price) <= 0) return setError('Price must be > 0')
+        if (selectedThan && Number(form.quantity) > Number(selectedThan.remaining_stock))
+            return setError(`Only ${selectedThan.remaining_stock}m available`)
+        setSaving(true)
+        try {
+            const res = await API.post('/transactions', form, { headers: authHeader() })
+            setSuccess(`✓ Sale recorded — Margin: ${money(res.data.margin)}`)
+            setForm(emptyForm); setSelectedThan(null); setSearch(''); loadAll()
+        } catch (e) { setError(e?.response?.data?.error || 'Sale failed') }
+        finally { setSaving(false) }
+    }
 
     const margin = previewMargin()
 
@@ -116,47 +133,83 @@ export default function SaleRecorder({ user }) {
             <section className="card" style={{ marginBottom: '2rem' }}>
                 <form onSubmit={handleSubmit}>
 
-                    {/* ── Row 1: Than search + select (full width) ── */}
-                    <div style={{ marginBottom: '1rem' }}>
-                        <label style={labelStyle}>
+                    {/* ── Row 1: Than autocomplete ── */}
+                    <div style={{ marginBottom: '1rem' }} ref={wrapRef}>
+                        <div style={labelStyle}>
                             <span style={capStyle}>Search &amp; Select Than *</span>
-                            <input
-                                value={search}
-                                onChange={e => setSearch(e.target.value)}
-                                placeholder="Filter by code, fabric, color, design…"
-                                className="input"
-                                style={{ marginBottom: 6 }}
-                            />
-                            {thans.length === 0 && !fetchError ? (
-                                <div style={{ padding: '0.75rem 1rem', borderRadius: 8, background: 'var(--color-surface-offset)', border: '1px solid var(--color-border)', fontSize: 13, color: 'var(--color-text-muted)', textAlign: 'center' }}>
-                                    No thans in stock yet.{' '}
-                                    <strong style={{ color: 'var(--color-text)' }}>Go to Bale Intake → open a bale → add thans first.</strong>
-                                </div>
-                            ) : (
-                                <select
-                                    name="than_id"
-                                    value={form.than_id}
-                                    onChange={handleChange}
+
+                            {/* Search input */}
+                            <div style={{ position: 'relative' }}>
+                                <input
+                                    value={search}
+                                    onChange={handleSearchChange}
+                                    onFocus={() => !selectedThan && setShowDropdown(true)}
+                                    placeholder="Type code, fabric, colour, design…"
                                     className="input"
-                                    size={5}
-                                    style={{ height: 'auto', width: '100%', fontFamily: 'monospace', fontSize: 13 }}
-                                >
-                                    <option value="">-- select --</option>
-                                    {filteredThans.length === 0 && thans.length > 0
-                                        ? <option disabled>No thans match "{search}"</option>
-                                        : filteredThans.map(t => (
-                                            <option key={t.than_id} value={t.than_id}>
-                                                {t.than_code.padEnd(9)} | {[t.color, t.design, t.fabric_type].filter(Boolean).join(' / ').padEnd(40)} | {Number(t.remaining_stock).toFixed(1)}m | NPR {Number(t.selling_price).toFixed(2)}/m
-                                            </option>
-                                        ))
-                                    }
-                                </select>
+                                    autoComplete="off"
+                                    style={{ paddingRight: selectedThan ? '2.2rem' : undefined }}
+                                />
+                                {/* Clear button shown only when a than is selected */}
+                                {selectedThan && (
+                                    <button
+                                        type="button"
+                                        onClick={clearThan}
+                                        title="Clear selection"
+                                        style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--color-text-muted)', lineHeight: 1 }}
+                                    >×</button>
+                                )}
+                            </div>
+
+                            {/* Floating dropdown — only when showDropdown and no selection */}
+                            {showDropdown && !selectedThan && (
+                                <div style={{ position: 'relative' }}>
+                                    <div style={{
+                                        position: 'absolute', top: 2, left: 0, right: 0, zIndex: 100,
+                                        background: 'var(--color-surface-2)', border: '1px solid var(--color-border)',
+                                        borderRadius: 8, boxShadow: '0 8px 24px oklch(0.2 0.01 80 / 0.12)',
+                                        maxHeight: 260, overflowY: 'auto'
+                                    }}>
+                                        {thans.length === 0 ? (
+                                            <div style={{ padding: '0.75rem 1rem', fontSize: 13, color: 'var(--color-text-muted)', textAlign: 'center' }}>
+                                                No thans in stock. Go to <strong>Bale Intake</strong> first.
+                                            </div>
+                                        ) : filteredThans.length === 0 ? (
+                                            <div style={{ padding: '0.75rem 1rem', fontSize: 13, color: 'var(--color-text-muted)' }}>
+                                                No thans match "{search}"
+                                            </div>
+                                        ) : (
+                                            filteredThans.map((t, i) => (
+                                                <div
+                                                    key={t.than_id}
+                                                    onClick={() => selectThan(t)}
+                                                    style={{
+                                                        padding: '0.6rem 1rem', cursor: 'pointer', fontSize: 13,
+                                                        borderBottom: i < filteredThans.length - 1 ? '1px solid var(--color-divider)' : 'none',
+                                                        display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem'
+                                                    }}
+                                                    onMouseEnter={e => e.currentTarget.style.background = 'var(--color-surface-offset)'}
+                                                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                                >
+                                                    <span>
+                                                        <strong style={{ fontFamily: 'monospace' }}>{t.than_code}</strong>
+                                                        <span style={{ color: 'var(--color-text-muted)', marginLeft: 8 }}>
+                                                            {[t.color, t.design, t.fabric_type].filter(Boolean).join(' / ')}
+                                                        </span>
+                                                    </span>
+                                                    <span style={{ whiteSpace: 'nowrap', color: 'var(--color-text-muted)', fontSize: 12 }}>
+                                                        {Number(t.remaining_stock).toFixed(1)}m · NPR {Number(t.selling_price).toFixed(0)}/m
+                                                    </span>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
                             )}
-                        </label>
+                        </div>
                     </div>
 
-                    {/* ── Row 2: Selected than info card + 3 key fields ── */}
-                    <div style={{ display: 'grid', gridTemplateColumns: selectedThan ? '260px 1fr 1fr 1fr' : '1fr 1fr 1fr', gap: '1rem', marginBottom: '1rem', alignItems: 'start' }}>
+                    {/* ── Row 2: Selected than info + key fields ── */}
+                    <div style={{ display: 'grid', gridTemplateColumns: selectedThan ? '240px 1fr 1fr 1fr' : '1fr 1fr 1fr', gap: '1rem', marginBottom: '1rem', alignItems: 'start' }}>
 
                         {selectedThan && (
                             <div style={{ background: 'var(--color-surface-offset)', borderRadius: 8, padding: '0.75rem 1rem', fontSize: 13, display: 'flex', flexDirection: 'column', gap: 5, borderLeft: '3px solid var(--color-primary)' }}>
@@ -189,12 +242,10 @@ export default function SaleRecorder({ user }) {
 
                     {/* ── Row 3: Secondary fields ── */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
-
                         <label style={labelStyle}>
                             <span style={capStyle}>Discount (NPR)</span>
                             <input name="discount" type="number" step="0.01" min="0" value={form.discount} onChange={handleChange} className="input" placeholder="0" />
                         </label>
-
                         <label style={labelStyle}>
                             <span style={capStyle}>Payment Status</span>
                             <select name="payment_status" value={form.payment_status} onChange={handleChange} className="input">
@@ -203,12 +254,10 @@ export default function SaleRecorder({ user }) {
                                 <option value="partial">Partial</option>
                             </select>
                         </label>
-
                         <label style={labelStyle}>
                             <span style={capStyle}>Sale Date</span>
                             <input name="sale_date" type="date" value={form.sale_date} onChange={handleChange} className="input" />
                         </label>
-
                         <label style={labelStyle}>
                             <span style={capStyle}>Notes</span>
                             <input name="notes" value={form.notes} onChange={handleChange} className="input" placeholder="Optional" />
