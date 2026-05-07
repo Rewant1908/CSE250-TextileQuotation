@@ -20,6 +20,7 @@ export default function SaleRecorder({ user }) {
     const [saving, setSaving]       = useState(false)
     const [loading, setLoading]     = useState(true)
     const [search, setSearch]       = useState('')
+    const [fetchError, setFetchError] = useState('')
 
     const authHeader = useCallback(
         () => ({ 'x-user-id': String(user.user_id), 'x-user-role': user.role }),
@@ -28,6 +29,7 @@ export default function SaleRecorder({ user }) {
 
     const loadAll = useCallback(async () => {
         setLoading(true)
+        setFetchError('')
         try {
             const [thanRes, retailerRes, salesRes] = await Promise.all([
                 API.get('/inventory/search', { params: { q: '' } }),
@@ -37,7 +39,10 @@ export default function SaleRecorder({ user }) {
             setThans(Array.isArray(thanRes.data) ? thanRes.data : [])
             setRetailers(Array.isArray(retailerRes.data) ? retailerRes.data : [])
             setSales(Array.isArray(salesRes.data) ? salesRes.data : [])
-        } catch (e) { console.error(e) }
+        } catch (e) {
+            console.error('SaleRecorder loadAll error:', e?.response?.status, e?.response?.data, e?.message)
+            setFetchError(e?.response?.data?.error || e?.message || 'Failed to load data')
+        }
         finally { setLoading(false) }
     }, [authHeader])
 
@@ -99,6 +104,12 @@ export default function SaleRecorder({ user }) {
         <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 1rem 2rem' }}>
             <h2 style={{ marginBottom: '1.2rem' }}>Record a Sale</h2>
 
+            {fetchError && (
+                <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', borderRadius: 8, background: '#fef2f2', border: '1px solid #fca5a5', fontSize: 14, color: '#b91c1c' }}>
+                    ⚠ Could not load data: {fetchError} — <button onClick={loadAll} style={{ textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer', color: '#b91c1c', fontSize: 14 }}>Retry</button>
+                </div>
+            )}
+
             {/* ── Sale Form ── */}
             <section className="card" style={{ marginBottom: '2rem' }}>
                 <form onSubmit={handleSubmit}>
@@ -114,14 +125,24 @@ export default function SaleRecorder({ user }) {
                                 className="input"
                                 style={{ marginBottom: 6 }}
                             />
-                            <select name="than_id" value={form.than_id} onChange={handleChange} className="input" size={4} style={{ height: 'auto' }}>
-                                <option value="">-- select --</option>
-                                {filteredThans.map(t => (
-                                    <option key={t.than_id} value={t.than_id}>
-                                        {t.than_code} | {[t.color, t.design, t.fabric_type].filter(Boolean).join(' / ')} | {Number(t.remaining_stock).toFixed(1)}m left | NPR {Number(t.selling_price).toFixed(2)}/m
-                                    </option>
-                                ))}
-                            </select>
+                            {thans.length === 0 && !fetchError ? (
+                                <div style={{ padding: '0.75rem 1rem', borderRadius: 8, background: 'var(--color-surface-offset)', border: '1px solid var(--color-border)', fontSize: 13, color: 'var(--color-text-muted)', textAlign: 'center' }}>
+                                    No thans in stock yet.{' '}
+                                    <strong style={{ color: 'var(--color-text)' }}>Go to Bale Intake → open a bale → add thans first.</strong>
+                                </div>
+                            ) : (
+                                <select name="than_id" value={form.than_id} onChange={handleChange} className="input" size={4} style={{ height: 'auto' }}>
+                                    <option value="">-- select --</option>
+                                    {filteredThans.length === 0 && thans.length > 0
+                                        ? <option disabled>No thans match "{search}"</option>
+                                        : filteredThans.map(t => (
+                                            <option key={t.than_id} value={t.than_id}>
+                                                {t.than_code} | {[t.color, t.design, t.fabric_type].filter(Boolean).join(' / ')} | {Number(t.remaining_stock).toFixed(1)}m left | NPR {Number(t.selling_price).toFixed(2)}/m
+                                            </option>
+                                        ))
+                                    }
+                                </select>
+                            )}
                         </label>
 
                         {/* Selected than info */}
@@ -194,7 +215,7 @@ export default function SaleRecorder({ user }) {
                     {error   && <p style={{ color: 'var(--color-error)',   marginBottom: '.6rem', fontSize: 14 }}>{error}</p>}
                     {success && <p style={{ color: 'var(--color-success)', marginBottom: '.6rem', fontSize: 14 }}>{success}</p>}
 
-                    <button type="submit" className="btn btn-primary" disabled={saving}>
+                    <button type="submit" className="btn btn-primary" disabled={saving || thans.length === 0}>
                         {saving ? 'Recording...' : 'Record Sale'}
                     </button>
                 </form>
