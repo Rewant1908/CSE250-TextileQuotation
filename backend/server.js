@@ -9,20 +9,28 @@ import agentRoutes from './routes/agents.js';
 
 const app = express();
 
+// ─── CORS ─────────────────────────────────────────────────────────────────────
 app.use(cors({
     origin: [
         'http://localhost:5173',
         'http://127.0.0.1:5173',
         'http://localhost:5174',
         'http://127.0.0.1:5174',
+        'http://localhost:3000',
+        'http://127.0.0.1:3000',
         'http://127.0.0.1:5500'
     ],
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+    credentials: true
 }));
 
-app.use('/api/agents', agentRoutes);
-
+// ─── BODY PARSER — must be before all routes ──────────────────────────────────
 app.use(express.json());
+
+// ─── ROUTES ───────────────────────────────────────────────────────────────────
+app.use('/api/agents', agentRoutes);
+app.use('/api/retailers', retailerRoutes);
+app.use('/api/transactions', salesRoutes);
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const phoneRegex = /^[0-9]{10}$/;
@@ -178,7 +186,6 @@ app.get('/api/suppliers', async (req, res) => {
 });
 
 // ─── BALES ────────────────────────────────────────────────────────────────────
-
 app.post('/api/bales', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
     const {
         bale_code, supplier_id, factory_name, arrival_date,
@@ -543,10 +550,6 @@ app.get('/api/inventory/search', async (req, res) => {
         if (conn) conn.release();
     }
 });
-
-// ─── ROUTERS ──────────────────────────────────────────────────────────────────
-app.use('/api/retailers', retailerRoutes);
-app.use('/api/transactions', salesRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
