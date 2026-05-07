@@ -82,6 +82,12 @@ export default function AdminProductManager({ user }) {
                         <option value="Suiting">Suiting</option>
                         <option value="Shirting">Shirting</option>
                         <option value="Dress Material">Dress Material</option>
+                        <option value="Furnishing">Furnishing</option>
+                        <option value="Denim">Denim</option>
+                        <option value="Knitwear">Knitwear</option>
+                        <option value="Cotton">Cotton</option>
+                        <option value="Synthetic">Synthetic</option>
+                        <option value="Printed">Printed</option>
                     </select>
                 </div>
                 <div className="form-group">

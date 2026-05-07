@@ -107,6 +107,193 @@ app.get('/api/products', async (req, res) => {
     }
 });
 
+// ─── OPERATIONS: wholesale textile intelligence dashboard ────────────────────
+app.get('/api/operations/dashboard', checkPermission('VIEW_OPERATIONS'), async (req, res) => {
+    let conn;
+    try {
+        conn = await pool.getConnection();
+
+        const [summary] = await conn.query(
+            `SELECT
+                COUNT(DISTINCT b.bale_id) AS total_bales,
+                COUNT(DISTINCT t.than_id) AS total_thans,
+                COALESCE(SUM(t.remaining_stock), 0) AS available_meters,
+                COALESCE(SUM(t.remaining_stock * t.cost_per_meter), 0) AS stock_cost_value,
+                COALESCE(SUM(t.remaining_stock * t.selling_price), 0) AS stock_retail_value,
+                COALESCE(SUM((t.selling_price - t.cost_per_meter) * t.remaining_stock), 0) AS unrealized_margin,
+                SUM(CASE WHEN t.movement_speed = 'dead' THEN 1 ELSE 0 END) AS dead_than_count,
+                COALESCE(SUM(CASE WHEN t.movement_speed = 'dead' THEN t.remaining_stock * t.cost_per_meter ELSE 0 END), 0) AS dead_stock_value
+             FROM thans t
+             LEFT JOIN bales b ON t.bale_id = b.bale_id`
+        );
+
+        const categoryMovement = await conn.query(
+            `SELECT
+                COALESCE(p.category, t.fabric_type) AS category,
+                COUNT(DISTINCT t.than_id) AS than_count,
+                COALESCE(SUM(t.remaining_stock), 0) AS remaining_meters,
+                COALESCE(SUM(tx.quantity), 0) AS sold_meters,
+                COALESCE(SUM(tx.margin), 0) AS realized_margin,
+                ROUND(
+                    COALESCE(SUM(tx.quantity), 0) /
+                    NULLIF(COALESCE(SUM(tx.quantity), 0) + COALESCE(SUM(t.remaining_stock), 0), 0),
+                    3
+                ) AS sell_through_rate
+             FROM thans t
+             LEFT JOIN products p ON t.product_id = p.product_id
+             LEFT JOIN (
+                SELECT than_id, SUM(quantity) AS quantity, SUM(margin) AS margin
+                FROM transactions
+                GROUP BY than_id
+             ) tx ON tx.than_id = t.than_id
+             GROUP BY COALESCE(p.category, t.fabric_type)
+             ORDER BY sold_meters DESC, realized_margin DESC
+             LIMIT 8`
+        );
+
+        const deadStock = await conn.query(
+            `SELECT
+                t.than_id,
+                t.than_code,
+                t.fabric_type,
+                t.color,
+                t.design,
+                t.remaining_stock,
+                t.selling_price,
+                t.warehouse_location,
+                t.movement_speed,
+                DATEDIFF(CURDATE(), DATE(COALESCE(MAX(im.movement_date), t.created_at))) AS days_without_movement
+             FROM thans t
+             LEFT JOIN inventory_movements im
+                ON im.than_id = t.than_id AND im.movement_type = 'stock_out'
+             WHERE t.remaining_stock > 0
+             GROUP BY
+                t.than_id, t.than_code, t.fabric_type, t.color, t.design,
+                t.remaining_stock, t.selling_price, t.warehouse_location,
+                t.movement_speed, t.created_at
+             ORDER BY
+                CASE WHEN t.movement_speed = 'dead' THEN 0 ELSE 1 END,
+                days_without_movement DESC,
+                t.remaining_stock DESC
+             LIMIT 10`
+        );
+
+        const retailerSignals = await conn.query(
+            `SELECT
+                r.retailer_id,
+                r.shop_name,
+                r.market_location,
+                r.payment_pattern,
+                r.preferred_categories,
+                r.preferred_price_segment,
+                r.outstanding_balance,
+                COUNT(tx.transaction_id) AS order_count,
+                COALESCE(SUM(tx.quantity), 0) AS meters_bought,
+                COALESCE(SUM(tx.price * tx.quantity - tx.discount), 0) AS revenue,
+                COALESCE(SUM(tx.margin), 0) AS margin
+             FROM retailers r
+             LEFT JOIN transactions tx ON r.retailer_id = tx.retailer_id
+             GROUP BY
+                r.retailer_id, r.shop_name, r.market_location, r.payment_pattern,
+                r.preferred_categories, r.preferred_price_segment, r.outstanding_balance
+             ORDER BY revenue DESC, meters_bought DESC
+             LIMIT 8`
+        );
+
+        const supplierSignals = await conn.query(
+            `SELECT
+                s.supplier_id,
+                s.supplier_name,
+                s.quality_rating,
+                s.delay_frequency,
+                s.trend_alignment,
+                COUNT(DISTINCT b.bale_id) AS bales_received,
+                COUNT(DISTINCT t.than_id) AS thans_created,
+                COALESCE(SUM(tx.quantity), 0) AS meters_sold,
+                COALESCE(SUM(tx.margin), 0) AS realized_margin
+             FROM suppliers s
+             LEFT JOIN bales b ON s.supplier_id = b.supplier_id
+             LEFT JOIN thans t ON b.bale_id = t.bale_id
+             LEFT JOIN (
+                SELECT than_id, SUM(quantity) AS quantity, SUM(margin) AS margin
+                FROM transactions
+                GROUP BY than_id
+             ) tx ON t.than_id = tx.than_id
+             GROUP BY
+                s.supplier_id, s.supplier_name, s.quality_rating,
+                s.delay_frequency, s.trend_alignment
+             ORDER BY realized_margin DESC, meters_sold DESC`
+        );
+
+        res.json({
+            summary,
+            categoryMovement,
+            deadStock,
+            retailerSignals,
+            supplierSignals
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    } finally {
+        if (conn) conn.release();
+    }
+});
+
+// ─── OPERATIONS: natural-language-style inventory lookup foundation ─────────
+app.get('/api/inventory/search', async (req, res) => {
+    const q = String(req.query.q || '').trim();
+    const maxPrice = req.query.max_price ? Number(req.query.max_price) : null;
+    const params = [];
+    const clauses = ['t.remaining_stock > 0'];
+
+    if (q) {
+        const like = `%${q}%`;
+        clauses.push(`(
+            t.than_code LIKE ? OR t.fabric_type LIKE ? OR t.color LIKE ? OR
+            t.design LIKE ? OR t.warehouse_location LIKE ? OR p.product_name LIKE ? OR
+            p.category LIKE ?
+        )`);
+        params.push(like, like, like, like, like, like, like);
+    }
+
+    if (Number.isFinite(maxPrice)) {
+        clauses.push('t.selling_price <= ?');
+        params.push(maxPrice);
+    }
+
+    let conn;
+    try {
+        conn = await pool.getConnection();
+        const rows = await conn.query(
+            `SELECT
+                t.than_id, t.than_code, t.fabric_type, t.color, t.design, t.gsm,
+                t.remaining_stock, t.selling_price, t.cost_per_meter,
+                ROUND(t.selling_price - t.cost_per_meter, 2) AS margin_per_meter,
+                t.warehouse_location, t.movement_speed, t.image_url,
+                p.product_name, p.category
+             FROM thans t
+             LEFT JOIN products p ON t.product_id = p.product_id
+             WHERE ${clauses.join(' AND ')}
+             ORDER BY
+                CASE t.movement_speed
+                    WHEN 'fast' THEN 0
+                    WHEN 'medium' THEN 1
+                    WHEN 'new' THEN 2
+                    WHEN 'slow' THEN 3
+                    ELSE 4
+                END,
+                margin_per_meter DESC
+             LIMIT 25`,
+            params
+        );
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    } finally {
+        if (conn) conn.release();
+    }
+});
+
 // ─── ADMIN: ADD product ───────────────────────────────────────────────────────
 app.post('/api/products', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
     const { product_name, category, base_price } = req.body;

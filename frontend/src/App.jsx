@@ -3,11 +3,12 @@ import CustomerForm from './components/CustomerForm'
 import QuotationForm from './components/QuotationForm'
 import QuotationHistory from './components/QuotationHistory'
 import AdminProductManager from './components/AdminProductManager'
+import OperationsDashboard from './components/OperationsDashboard'
 import LoginPage from './components/LoginPage'
 import './App.css'
 
 const USER_TABS  = ['Register Dealer', 'Create Quotation', 'My Quotations']
-const ADMIN_TABS = ['Quotation Requests', 'Manage Products']
+const ADMIN_TABS = ['Operations', 'Quotation Requests', 'Manage Products']
 
 const STORAGE_KEY = 'kt_impex_user'
 
@@ -68,8 +69,9 @@ function App() {
             <main className="content">
                 {isAdmin ? (
                     <>
-                        {activeTab === 0 && <QuotationHistory user={user} />}
-                        {activeTab === 1 && <AdminProductManager user={user} />}
+                        {activeTab === 0 && <OperationsDashboard user={user} />}
+                        {activeTab === 1 && <QuotationHistory user={user} />}
+                        {activeTab === 2 && <AdminProductManager user={user} />}
                     </>
                 ) : (
                     <>

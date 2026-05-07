@@ -4,6 +4,7 @@
  * Allowed roles per permission:
  *   MANAGE_PRODUCTS          -> admin
  *   MANAGE_QUOTATION_STATUS  -> admin
+ *   VIEW_OPERATIONS          -> admin
  */
 
 import pool from '../db.js';
@@ -11,6 +12,7 @@ import pool from '../db.js';
 const PERMISSION_ROLES = {
     MANAGE_PRODUCTS:          ['admin'],
     MANAGE_QUOTATION_STATUS:  ['admin'],
+    VIEW_OPERATIONS:          ['admin'],
 };
 
 export function checkPermission(requiredPermission) {
