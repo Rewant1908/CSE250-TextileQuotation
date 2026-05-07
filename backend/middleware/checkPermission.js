@@ -1,10 +1,9 @@
 /**
  * checkPermission middleware
- * Uses the existing users.role column — no extra RBAC tables needed.
- * Allowed roles per permission:
- *   MANAGE_PRODUCTS          -> admin
- *   MANAGE_QUOTATION_STATUS  -> admin
- *   VIEW_OPERATIONS          -> admin
+ * Reads user_id from (in order):
+ *   1. req.headers['x-user-id']  — used by GET requests that can't send a body
+ *   2. req.body.user_id          — used by POST/PUT/PATCH
+ *   3. req.query.user_id         — used by GET with query params
  */
 
 import pool from '../db.js';
@@ -17,7 +16,10 @@ const PERMISSION_ROLES = {
 
 export function checkPermission(requiredPermission) {
     return async (req, res, next) => {
-        const user_id = req.body?.user_id ?? req.query?.user_id;
+        const user_id =
+            req.headers['x-user-id'] ??
+            req.body?.user_id ??
+            req.query?.user_id;
 
         if (!user_id) {
             return res.status(401).json({ error: 'Unauthorized: user_id required' });

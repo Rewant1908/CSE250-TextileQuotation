@@ -19,6 +19,11 @@ export default function OperationsDashboard({ user }) {
     const [searching, setSearching] = useState(false)
     const [toast, setToast] = useState(null)
 
+    const authHeader = useCallback(
+        () => ({ 'x-user-id': String(user.user_id), 'x-user-role': user.role }),
+        [user.user_id, user.role]
+    )
+
     const showToast = (msg, type) => {
         setToast({ msg, type })
         setTimeout(() => setToast(null), 3500)
@@ -27,29 +32,25 @@ export default function OperationsDashboard({ user }) {
     const loadDashboard = useCallback(async () => {
         setLoading(true)
         try {
-            const res = await fetch(`${API}/api/operations/dashboard?user_id=${user.user_id}`)
-            const data = await res.json()
-            if (!res.ok) throw new Error(data.error || 'Dashboard failed')
-            setDashboard(data)
+            const res = await API.get('/operations/dashboard', { headers: authHeader() })
+            setDashboard(res.data)
         } catch (err) {
-            showToast(err.message || 'Could not load operations dashboard', 'error')
+            showToast(err?.response?.data?.error || err.message || 'Could not load operations dashboard', 'error')
         } finally {
             setLoading(false)
         }
-    }, [user.user_id])
+    }, [authHeader])
 
     const searchInventory = useCallback(async () => {
         setSearching(true)
-        const params = new URLSearchParams()
-        if (query.trim()) params.set('q', query.trim())
-        if (maxPrice) params.set('max_price', maxPrice)
+        const params = {}
+        if (query.trim()) params.q = query.trim()
+        if (maxPrice) params.max_price = maxPrice
         try {
-            const res = await fetch(`${API}/api/inventory/search?${params.toString()}`)
-            const data = await res.json()
-            if (!res.ok) throw new Error(data.error || 'Search failed')
-            setInventory(Array.isArray(data) ? data : [])
+            const res = await API.get('/inventory/search', { params })
+            setInventory(Array.isArray(res.data) ? res.data : [])
         } catch (err) {
-            showToast(err.message || 'Could not search inventory', 'error')
+            showToast(err?.response?.data?.error || err.message || 'Could not search inventory', 'error')
         } finally {
             setSearching(false)
         }
