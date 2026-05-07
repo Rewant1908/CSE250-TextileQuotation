@@ -5,16 +5,16 @@ import QuotationHistory from './components/QuotationHistory'
 import AdminProductManager from './components/AdminProductManager'
 import OperationsDashboard from './components/OperationsDashboard'
 import BaleManager from './components/BaleManager'
+import RetailerManager from './components/RetailerManager'
+import SaleRecorder from './components/SaleRecorder'
 import LoginPage from './components/LoginPage'
 import './App.css'
 
 const USER_TABS  = ['Register Dealer', 'Create Quotation', 'My Quotations']
-const ADMIN_TABS = ['Operations', 'Bale Intake', 'Quotation Requests', 'Manage Products']
+const ADMIN_TABS = ['Operations', 'Record Sale', 'Retailers', 'Bale Intake', 'Quotation Requests', 'Manage Products']
 
 const STORAGE_KEY = 'kt_impex_user'
 
-// Error boundary — catches any render crash inside a tab and shows a message
-// instead of a blank white page
 class TabErrorBoundary extends Component {
     constructor(props) {
         super(props)
@@ -27,7 +27,6 @@ class TabErrorBoundary extends Component {
         console.error('Tab render error:', error, info)
     }
     componentDidUpdate(prevProps) {
-        // Reset when user navigates to a different tab
         if (prevProps.tabKey !== this.props.tabKey) {
             this.setState({ hasError: false, error: null })
         }
@@ -113,9 +112,11 @@ function App() {
                     {isAdmin ? (
                         <>
                             {activeTab === 0 && <OperationsDashboard user={user} />}
-                            {activeTab === 1 && <BaleManager user={user} />}
-                            {activeTab === 2 && <QuotationHistory user={user} />}
-                            {activeTab === 3 && <AdminProductManager user={user} />}
+                            {activeTab === 1 && <SaleRecorder user={user} />}
+                            {activeTab === 2 && <RetailerManager user={user} />}
+                            {activeTab === 3 && <BaleManager user={user} />}
+                            {activeTab === 4 && <QuotationHistory user={user} />}
+                            {activeTab === 5 && <AdminProductManager user={user} />}
                         </>
                     ) : (
                         <>

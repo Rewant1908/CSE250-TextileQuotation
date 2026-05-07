@@ -3,6 +3,8 @@ import cors from 'cors';
 import bcrypt from 'bcrypt';
 import pool from './db.js';
 import { checkPermission } from './middleware/checkPermission.js';
+import retailerRoutes from './routes/retailers.js';
+import salesRoutes from './routes/sales.js';
 
 const app = express();
 
@@ -173,7 +175,6 @@ app.get('/api/suppliers', async (req, res) => {
 
 // ─── BALES ────────────────────────────────────────────────────────────────────
 
-// POST /api/bales
 app.post('/api/bales', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
     const {
         bale_code, supplier_id, factory_name, arrival_date,
@@ -221,7 +222,6 @@ app.post('/api/bales', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
     }
 });
 
-// GET /api/bales
 app.get('/api/bales', checkPermission('VIEW_OPERATIONS'), async (req, res) => {
     let conn;
     try {
@@ -251,7 +251,6 @@ app.get('/api/bales', checkPermission('VIEW_OPERATIONS'), async (req, res) => {
     }
 });
 
-// GET /api/bales/:id
 app.get('/api/bales/:id', checkPermission('VIEW_OPERATIONS'), async (req, res) => {
     const baleId = Number(req.params.id);
     if (!Number.isInteger(baleId) || baleId <= 0)
@@ -276,7 +275,6 @@ app.get('/api/bales/:id', checkPermission('VIEW_OPERATIONS'), async (req, res) =
     }
 });
 
-// POST /api/bales/:id/thans
 app.post('/api/bales/:id/thans', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
     const baleId = Number(req.params.id);
     if (!Number.isInteger(baleId) || baleId <= 0)
@@ -305,7 +303,6 @@ app.post('/api/bales/:id/thans', checkPermission('MANAGE_PRODUCTS'), async (req,
     let conn;
     try {
         conn = await pool.getConnection();
-
         const [bale] = await conn.query('SELECT bale_id, status FROM bales WHERE bale_id = ?', [baleId]);
         if (!bale) return res.status(404).json({ error: 'Bale not found' });
 
@@ -322,7 +319,6 @@ app.post('/api/bales/:id/thans', checkPermission('MANAGE_PRODUCTS'), async (req,
             }
 
             const meterLength = Number(t.meter_length);
-
             const result = await conn.query(
                 `INSERT INTO thans
                     (than_code, bale_id, product_id, fabric_type, color, design, gsm,
@@ -330,17 +326,10 @@ app.post('/api/bales/:id/thans', checkPermission('MANAGE_PRODUCTS'), async (req,
                      warehouse_location, movement_speed, status)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', 'available')`,
                 [
-                    t.than_code.trim(),
-                    baleId,
-                    t.product_id || null,
-                    t.fabric_type.trim(),
-                    t.color?.trim() || null,
-                    t.design?.trim() || null,
-                    t.gsm ? Number(t.gsm) : null,
-                    meterLength,
-                    Number(t.cost_per_meter),
-                    Number(t.selling_price),
-                    meterLength,
+                    t.than_code.trim(), baleId, t.product_id || null,
+                    t.fabric_type.trim(), t.color?.trim() || null, t.design?.trim() || null,
+                    t.gsm ? Number(t.gsm) : null, meterLength,
+                    Number(t.cost_per_meter), Number(t.selling_price), meterLength,
                     t.warehouse_location?.trim() || null
                 ]
             );
@@ -352,13 +341,7 @@ app.post('/api/bales/:id/thans', checkPermission('MANAGE_PRODUCTS'), async (req,
                     (than_id, movement_type, quantity, from_location, to_location,
                      reference_type, reference_id, notes, movement_date)
                  VALUES (?, 'stock_in', ?, NULL, ?, 'bale', ?, ?, current_timestamp())`,
-                [
-                    thanId,
-                    meterLength,
-                    t.warehouse_location?.trim() || null,
-                    baleId,
-                    `Breakdown from bale ${baleId}`
-                ]
+                [thanId, meterLength, t.warehouse_location?.trim() || null, baleId, `Breakdown from bale ${baleId}`]
             );
         }
 
@@ -377,7 +360,6 @@ app.post('/api/bales/:id/thans', checkPermission('MANAGE_PRODUCTS'), async (req,
     }
 });
 
-// GET /api/bales/:id/thans
 app.get('/api/bales/:id/thans', checkPermission('VIEW_OPERATIONS'), async (req, res) => {
     const baleId = Number(req.params.id);
     if (!Number.isInteger(baleId) || baleId <= 0)
@@ -521,16 +503,15 @@ app.get('/api/inventory/search', async (req, res) => {
     const clauses = ['t.remaining_stock > 0'];
 
     if (q) {
-        const like = `%${q}%`;
         clauses.push(`(
-            t.than_code LIKE ? OR t.fabric_type LIKE ? OR t.color LIKE ? OR
-            t.design LIKE ? OR t.warehouse_location LIKE ? OR p.product_name LIKE ? OR
-            p.category LIKE ?
+            t.than_code LIKE ? OR t.fabric_type LIKE ? OR t.color LIKE ?
+            OR t.design LIKE ? OR COALESCE(p.category, '') LIKE ?
+            OR t.warehouse_location LIKE ?
         )`);
-        params.push(like, like, like, like, like, like, like);
+        const like = `%${q}%`;
+        params.push(like, like, like, like, like, like);
     }
-
-    if (Number.isFinite(maxPrice)) {
+    if (maxPrice !== null && !isNaN(maxPrice)) {
         clauses.push('t.selling_price <= ?');
         params.push(maxPrice);
     }
@@ -539,22 +520,16 @@ app.get('/api/inventory/search', async (req, res) => {
     try {
         conn = await pool.getConnection();
         const rows = await conn.query(
-            `SELECT
-                t.than_id, t.than_code, t.fabric_type, t.color, t.design, t.gsm,
-                t.remaining_stock, t.selling_price, t.cost_per_meter,
-                ROUND(t.selling_price - t.cost_per_meter, 2) AS margin_per_meter,
-                t.warehouse_location, t.movement_speed, t.image_url,
-                p.product_name, p.category
+            `SELECT t.than_id, t.than_code, t.fabric_type, t.color, t.design,
+                    t.gsm, t.remaining_stock, t.selling_price, t.cost_per_meter,
+                    t.warehouse_location, t.movement_speed,
+                    ROUND(t.selling_price - t.cost_per_meter, 2) AS margin_per_meter,
+                    p.product_name, p.category
              FROM thans t
              LEFT JOIN products p ON t.product_id = p.product_id
              WHERE ${clauses.join(' AND ')}
-             ORDER BY
-                CASE t.movement_speed
-                    WHEN 'fast' THEN 0 WHEN 'medium' THEN 1
-                    WHEN 'new' THEN 2 WHEN 'slow' THEN 3 ELSE 4
-                END,
-                margin_per_meter DESC
-             LIMIT 25`,
+             ORDER BY t.movement_speed DESC, t.remaining_stock DESC
+             LIMIT 100`,
             params
         );
         res.json(rows);
@@ -565,176 +540,9 @@ app.get('/api/inventory/search', async (req, res) => {
     }
 });
 
-// ─── ENQUIRY ──────────────────────────────────────────────────────────────────
-app.post('/api/enquiry', async (req, res) => {
-    const { customer_name, contact_phone, email } = req.body;
-    if (!customer_name || customer_name.trim() === '')
-        return res.status(400).json({ error: 'customer_name is required' });
-    if (customer_name.trim().length > 150)
-        return res.status(400).json({ error: 'customer_name must be under 150 characters' });
-    if (email && !emailRegex.test(email))
-        return res.status(400).json({ error: 'Invalid email format' });
-    if (contact_phone && !phoneRegex.test(contact_phone))
-        return res.status(400).json({ error: 'Phone must be exactly 10 digits' });
-    let conn;
-    try {
-        conn = await pool.getConnection();
-        const result = await conn.query(
-            'INSERT INTO customers (customer_name, contact_phone, email) VALUES (?, ?, ?)',
-            [customer_name.trim(), contact_phone || null, email || null]
-        );
-        res.status(201).json({ success: true, customer_id: Number(result.insertId) });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    } finally {
-        if (conn) conn.release();
-    }
-});
+// ─── ROUTERS ──────────────────────────────────────────────────────────────────
+app.use('/api/retailers', retailerRoutes);
+app.use('/api/transactions', salesRoutes);
 
-// ─── QUOTATIONS ───────────────────────────────────────────────────────────────
-app.post('/api/create-quotation', async (req, res) => {
-    const { customer_id, user_id, items } = req.body;
-    if (!customer_id || !items || items.length === 0)
-        return res.status(400).json({ error: 'customer_id and items are required' });
-    for (const item of items) {
-        if (!item.product_id || Number(item.product_id) <= 0)
-            return res.status(400).json({ error: `Invalid product_id: ${item.product_id}` });
-        if (!item.quantity || Number(item.quantity) <= 0)
-            return res.status(400).json({ error: 'Quantity must be greater than 0' });
-        if (Number(item.quantity) > 100000)
-            return res.status(400).json({ error: 'Quantity too large' });
-    }
-    let conn;
-    try {
-        conn = await pool.getConnection();
-        await conn.beginTransaction();
-        const result = await conn.query(
-            'INSERT INTO quotations (customer_id, user_id, status) VALUES (?, ?, ?)',
-            [customer_id, user_id || null, 'pending']
-        );
-        const quotation_id = Number(result.insertId);
-        for (const item of items) {
-            const [product] = await conn.query(
-                'SELECT base_price FROM products WHERE product_id = ?', [item.product_id]
-            );
-            if (!product) throw new Error(`Product ID ${item.product_id} not found`);
-            await conn.query(
-                'INSERT INTO quotation_items (quotation_id, product_id, quantity, unit_price_at_time) VALUES (?, ?, ?, ?)',
-                [quotation_id, item.product_id, item.quantity, product.base_price]
-            );
-        }
-        await conn.query(
-            `UPDATE quotations SET total_amount = (
-                SELECT ROUND(SUM(quantity * unit_price_at_time), 2)
-                FROM quotation_items WHERE quotation_id = ?
-            ) WHERE quotation_id = ?`,
-            [quotation_id, quotation_id]
-        );
-        await conn.commit();
-        res.status(201).json({ success: true, quotation_id });
-    } catch (err) {
-        if (conn) await conn.rollback();
-        res.status(500).json({ error: err.message });
-    } finally {
-        if (conn) conn.release();
-    }
-});
-
-app.get('/api/quotations', async (req, res) => {
-    const { user_id } = req.query;
-    if (!user_id) return res.status(400).json({ error: 'user_id required' });
-    let conn;
-    try {
-        conn = await pool.getConnection();
-        const [requester] = await conn.query('SELECT role FROM users WHERE user_id = ?', [user_id]);
-        if (!requester) return res.status(401).json({ error: 'User not found' });
-        let rows;
-        if (requester.role === 'admin') {
-            rows = await conn.query(
-                `SELECT q.quotation_id, c.customer_name, c.contact_phone, c.email,
-                        q.total_amount, ROUND(q.total_amount * 1.13, 2) AS grand_total,
-                        q.status, q.decline_reason, q.created_at, u.username
-                 FROM quotations q
-                 JOIN customers c ON q.customer_id = c.customer_id
-                 LEFT JOIN users u ON q.user_id = u.user_id
-                 ORDER BY q.created_at DESC`
-            );
-        } else {
-            rows = await conn.query(
-                `SELECT q.quotation_id, c.customer_name, c.contact_phone, c.email,
-                        q.total_amount, ROUND(q.total_amount * 1.13, 2) AS grand_total,
-                        q.status, q.decline_reason, q.created_at
-                 FROM quotations q
-                 JOIN customers c ON q.customer_id = c.customer_id
-                 WHERE q.user_id = ?
-                 ORDER BY q.created_at DESC`,
-                [user_id]
-            );
-        }
-        res.json(rows);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    } finally {
-        if (conn) conn.release();
-    }
-});
-
-app.get('/api/quotations/:id', async (req, res) => {
-    const quotationId = Number(req.params.id);
-    if (!Number.isInteger(quotationId) || quotationId <= 0)
-        return res.status(400).json({ error: 'Invalid quotation ID' });
-    let conn;
-    try {
-        conn = await pool.getConnection();
-        const [quotation] = await conn.query(
-            `SELECT q.quotation_id, c.customer_name, c.contact_phone, c.email,
-                    q.total_amount, ROUND(q.total_amount * 0.13, 2) AS vat_13,
-                    ROUND(q.total_amount * 1.13, 2) AS grand_total,
-                    q.status, q.decline_reason, q.created_at
-             FROM quotations q
-             JOIN customers c ON q.customer_id = c.customer_id
-             WHERE q.quotation_id = ?`,
-            [quotationId]
-        );
-        if (!quotation) return res.status(404).json({ error: 'Quotation not found' });
-        const items = await conn.query(
-            `SELECT p.product_name, p.category, qi.quantity,
-                    qi.unit_price_at_time,
-                    ROUND(qi.quantity * qi.unit_price_at_time, 2) AS line_total
-             FROM quotation_items qi
-             JOIN products p ON qi.product_id = p.product_id
-             WHERE qi.quotation_id = ?`,
-            [quotationId]
-        );
-        res.json({ ...quotation, items });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    } finally {
-        if (conn) conn.release();
-    }
-});
-
-app.patch('/api/quotations/:id/status', checkPermission('MANAGE_QUOTATION_STATUS'), async (req, res) => {
-    const { status, decline_reason } = req.body;
-    if (!['accepted', 'declined', 'pending'].includes(status))
-        return res.status(400).json({ error: 'Invalid status' });
-    if (status === 'declined' && (!decline_reason || decline_reason.trim() === ''))
-        return res.status(400).json({ error: 'Decline reason is required' });
-    let conn;
-    try {
-        conn = await pool.getConnection();
-        await conn.query(
-            'UPDATE quotations SET status = ?, decline_reason = ? WHERE quotation_id = ?',
-            [status, status === 'declined' ? decline_reason.trim() : null, req.params.id]
-        );
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    } finally {
-        if (conn) conn.release();
-    }
-});
-
-app.listen(process.env.PORT || 5000, () =>
-    console.log(`Server running on port ${process.env.PORT || 5000}`)
-);
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
