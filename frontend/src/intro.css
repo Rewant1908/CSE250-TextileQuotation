@@ -1,422 +1,398 @@
-/* ============================================================
-   KT IMPEX — TEXTILE CINEMA INTRO
-   Fabric bolt unfurl → woven thread grid → thread race → drape wave → KT logo → page reveal
-   Pure CSS animations, no libraries
-   ============================================================ */
+/* =================================================================
+   KT IMPEX — TEXTILE CINEMA PRELOADER + AMBIENT BACKGROUND
+   GSAP-driven. All animated props: transform + opacity only.
+   ================================================================= */
 
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&display=swap');
 
-/* ── Splash overlay ─────────────────────────────────────────── */
-.intro-splash {
-    position: fixed;
-    inset: 0;
-    z-index: 9999;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-    background: #0d0806;
-    pointer-events: all;
+/* ── Body paint — instant, before any JS ──────────────────────── */
+body { background: #0d0806; }
+
+/* ================================================================
+   PRELOADER OVERLAY
+   ================================================================ */
+#kt-preloader {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: #0d0806;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: all;
+  /* visibility toggled by GSAP, not display:none — avoids reflow */
 }
 
-.intro-splash--burst { opacity: 1; }
-.intro-splash--logo  { opacity: 1; }
-
-@keyframes splashFadeOut {
-    0%   { opacity: 1; }
-    80%  { opacity: 1; }
-    100% { opacity: 0; pointer-events: none; }
-}
-.intro-splash--logo {
-    animation: splashFadeOut 1.8s ease 0.8s forwards;
-}
-
-/* ── Background weave texture ─────────────────────────────────── */
-.intro-splash::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background:
-        repeating-linear-gradient(0deg, transparent 0px, transparent 3px, rgba(255,248,237,0.028) 3px, rgba(255,248,237,0.028) 4px),
-        repeating-linear-gradient(90deg, transparent 0px, transparent 3px, rgba(255,248,237,0.022) 3px, rgba(255,248,237,0.022) 4px),
-        #0d0806;
-    pointer-events: none;
-    z-index: 0;
+/* background woven texture — zero runtime cost */
+#kt-preloader::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(0deg,   transparent 0px, transparent 3px, rgba(255,248,237,.03) 3px, rgba(255,248,237,.03) 4px),
+    repeating-linear-gradient(90deg,  transparent 0px, transparent 3px, rgba(255,248,237,.025) 3px, rgba(255,248,237,.025) 4px);
+  pointer-events: none;
 }
 
-/* ── PHASE 1: Fabric bolt unfurl ───────────────────────────────── */
-/* A wide fabric panel rolls from the left edge across the full screen */
-.intro-fabric-bolt {
-    position: absolute;
-    top: 0;
-    left: -110%;
-    width: 110%;
-    height: 100%;
-    z-index: 5;
-    overflow: hidden;
-    border-right: 2px solid rgba(185,137,69,0.55);
-    animation: boltUnfurl 1.2s cubic-bezier(0.16, 1, 0.3, 1) 0.05s forwards;
+/* ── PHASE 1: Fabric bolt ──────────────────────────────────────── */
+.pre-bolt {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  transform: scaleX(0);
+  transform-origin: left center;
+  will-change: transform;
+  overflow: hidden;
 }
 
-/* warp + weft textile pattern on the bolt */
-.intro-fabric-bolt::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background:
-        repeating-linear-gradient(
-            90deg,
-            rgba(143,29,29,0.78) 0px, rgba(143,29,29,0.78) 2px,
-            rgba(255,248,237,0.06) 2px, rgba(255,248,237,0.06) 8px,
-            rgba(95,17,17,0.55) 8px, rgba(95,17,17,0.55) 9px,
-            transparent 9px, transparent 14px
-        ),
-        repeating-linear-gradient(
-            0deg,
-            rgba(185,137,69,0.58) 0px, rgba(185,137,69,0.58) 1px,
-            rgba(255,248,237,0.04) 1px, rgba(255,248,237,0.04) 6px,
-            rgba(143,29,29,0.4) 6px, rgba(143,29,29,0.4) 7px,
-            transparent 7px, transparent 12px
-        ),
-        linear-gradient(108deg, #3d0e0e 0%, #8f1d1d 28%, #c0392b 54%, #8f1d1d 76%, #2a0808 100%);
+.pre-bolt::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(90deg,
+      rgba(143,29,29,.82) 0 2px,
+      rgba(255,248,237,.06) 2px 8px,
+      rgba(95,17,17,.55) 8px 9px,
+      transparent 9px 14px
+    ),
+    repeating-linear-gradient(0deg,
+      rgba(185,137,69,.6) 0 1px,
+      rgba(255,248,237,.04) 1px 6px,
+      rgba(143,29,29,.42) 6px 7px,
+      transparent 7px 12px
+    ),
+    linear-gradient(108deg, #3d0e0e, #8f1d1d 30%, #c0392b 54%, #8f1d1d 76%, #2a0808);
 }
 
-/* silk sheen over the bolt */
-.intro-fabric-bolt::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(
-        115deg,
-        transparent 0%,
-        rgba(255,248,237,0.18) 22%,
-        rgba(255,255,255,0.28) 36%,
-        rgba(255,248,237,0.12) 50%,
-        transparent 65%,
-        rgba(255,248,237,0.08) 80%,
-        transparent 100%
-    );
-    animation: sheenMove 1.2s ease 0.05s forwards;
+/* silk sheen strip — GSAP moves via xPercent */
+.pre-bolt-sheen {
+  position: absolute;
+  top: 0; left: 0;
+  width: 50%; height: 100%;
+  will-change: transform;
+  background: linear-gradient(
+    115deg,
+    transparent 0%,
+    rgba(255,248,237,.18) 22%,
+    rgba(255,255,255,.3) 38%,
+    rgba(255,248,237,.12) 52%,
+    transparent 66%
+  );
+  transform: translateX(-100%) skewX(-8deg);
 }
 
-@keyframes boltUnfurl {
-    0%   { left: -110%; }
-    50%  { left: 0%; }       /* bolt fully on screen */
-    72%  { left: 0%; }       /* hold */
-    100% { left: 110%; }     /* sweeps off right */
+/* ── PHASE 1b: Drape panels ──────────────────────────────────── */
+.pre-drapes {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
 }
 
-@keyframes sheenMove {
-    0%   { transform: translateX(-40%) skewX(-8deg); opacity: 0; }
-    18%  { opacity: 1; }
-    80%  { transform: translateX(80%) skewX(-8deg); opacity: 0.85; }
-    100% { transform: translateX(160%) skewX(-8deg); opacity: 0; }
+.pre-drape {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  transform: translateY(-100%);
+  will-change: transform;
+  transform-origin: top center;
+  border-radius: 0 0 55% 55%;
+}
+.pre-drape:nth-child(1) { left:5%;  width:34%; background: linear-gradient(180deg, rgba(143,29,29,.85) 0%, rgba(95,17,17,.5) 60%, transparent 100%); }
+.pre-drape:nth-child(2) { left:30%; width:44%; background: linear-gradient(180deg, rgba(185,137,69,.75) 0%, rgba(143,29,29,.5) 55%, transparent 100%); border-radius: 0 0 65% 50%; }
+.pre-drape:nth-child(3) { left:58%; width:38%; background: linear-gradient(180deg, rgba(255,248,237,.35) 0%, rgba(143,29,29,.45) 55%, transparent 100%); border-radius: 0 0 50% 65%; }
+
+/* ── PHASE 2: Thread lines ────────────────────────────────────── */
+.pre-threads {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
 }
 
-/* ── PHASE 1b: Billowing drape panels (fall in sync with bolt) ─────── */
-.intro-drapes {
-    position: absolute;
-    inset: 0;
-    z-index: 4;
-    pointer-events: none;
-    overflow: hidden;
+.pre-thread {
+  position: absolute;
+  height: 1px;
+  width: 100%;
+  transform: scaleX(0);
+  transform-origin: left center;
+  will-change: transform;
+  border-radius: 999px;
+}
+.pre-thread:nth-child(1) { top:18%; background: linear-gradient(90deg, transparent, rgba(143,29,29,.9), rgba(185,137,69,.7), transparent); }
+.pre-thread:nth-child(2) { top:30%; background: linear-gradient(90deg, transparent, rgba(255,248,237,.6), rgba(143,29,29,.8), transparent); }
+.pre-thread:nth-child(3) { top:42%; background: linear-gradient(90deg, transparent, rgba(185,137,69,1), rgba(255,248,237,.5), transparent); height:2px; }
+.pre-thread:nth-child(4) { top:50%; background: linear-gradient(90deg, transparent, rgba(255,248,237,.8), rgba(185,137,69,.9), transparent); height:2px; }
+.pre-thread:nth-child(5) { top:58%; background: linear-gradient(90deg, transparent, rgba(143,29,29,.7), rgba(185,137,69,.6), transparent); }
+.pre-thread:nth-child(6) { top:68%; background: linear-gradient(90deg, transparent, rgba(255,248,237,.5), rgba(143,29,29,.9), transparent); }
+.pre-thread:nth-child(7) { top:78%; background: linear-gradient(90deg, transparent, rgba(185,137,69,.5), transparent); }
+.pre-thread:nth-child(8) { top:88%; background: linear-gradient(90deg, transparent, rgba(143,29,29,.6), transparent); }
+
+/* glowing needle tip */
+.pre-needle {
+  position: absolute;
+  top: 50%; width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #fff8ed;
+  transform: translate(-50%, -50%);
+  will-change: transform;
+  box-shadow: 0 0 10px rgba(255,248,237,.9), 0 0 24px rgba(185,137,69,.8), 0 0 48px rgba(185,137,69,.4);
 }
 
-.intro-drape {
-    position: absolute;
-    top: -100%;
-    height: 130%;
-    border-radius: 0 0 60% 60%;
-    animation: drapefall 1.05s cubic-bezier(0.34, 1.4, 0.64, 1) forwards;
-    transform-origin: top center;
+/* ── PHASE 2b: Woven grid ─────────────────────────────────────── */
+.pre-weave {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  will-change: opacity;
+  background:
+    repeating-linear-gradient(90deg, rgba(143,29,29,.16) 0 1px, transparent 1px 18px),
+    repeating-linear-gradient(0deg,  rgba(185,137,69,.13) 0 1px, transparent 1px 18px);
 }
 
-.intro-drape:nth-child(1) {
-    left: 6%;  width: 36%;
-    background: linear-gradient(180deg, rgba(143,29,29,0.82) 0%, rgba(95,17,17,0.52) 60%, transparent 100%);
-    animation-delay: 0.04s;
-    border-radius: 0 0 50% 70%;
-}
-.intro-drape:nth-child(2) {
-    left: 30%; width: 44%;
-    background: linear-gradient(180deg, rgba(185,137,69,0.74) 0%, rgba(143,29,29,0.48) 50%, transparent 100%);
-    animation-delay: 0.14s;
-    border-radius: 0 0 65% 55%;
-}
-.intro-drape:nth-child(3) {
-    left: 58%; width: 38%;
-    background: linear-gradient(180deg, rgba(255,248,237,0.34) 0%, rgba(143,29,29,0.44) 55%, transparent 100%);
-    animation-delay: 0.23s;
-    border-radius: 0 0 55% 65%;
+/* ── PHASE 3: Logo ───────────────────────────────────────────── */
+.pre-logo {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  opacity: 0;
+  will-change: transform, opacity, filter;
 }
 
-@keyframes drapefall {
-    0%   { top: -100%; opacity: 0; }
-    18%  { opacity: 1; }
-    60%  { top: -6%;   opacity: 0.9; }
-    78%  { top: -3%;   opacity: 0.7; }
-    100% { top: -100%; opacity: 0; }
+.pre-badge {
+  width: 110px; height: 110px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 36% 34%, #c0392b, #5f1111 68%);
+  color: #fff8ed;
+  font-family: 'Playfair Display', serif;
+  font-size: 44px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  box-shadow:
+    0 0 0 3px rgba(185,137,69,.75),
+    0 0 0 7px rgba(143,29,29,.3),
+    0 0 52px rgba(143,29,29,.9),
+    0 0 100px rgba(143,29,29,.45);
+  animation: badgePulse 2s ease-in-out infinite alternate;
 }
 
-.intro-drape::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.22) 50%, transparent 70%);
-    animation: drapeSheen 1.05s ease forwards;
-    animation-delay: inherit;
+/* rotating embroidery hoop ring */
+.pre-badge::before {
+  content: '';
+  position: absolute;
+  inset: -12px;
+  border-radius: 50%;
+  border: 1.5px dashed rgba(185,137,69,.55);
+  animation: ringRotate 8s linear infinite;
 }
 
-@keyframes drapeSheen {
-    0%   { transform: translateX(-60%); }
-    100% { transform: translateX(120%); }
-}
-
-/* ── PHASE 2: Thread racing lines ───────────────────────────────── */
-/* Thin threads race across the screen like a shuttle loom */
-.intro-threads {
-    position: absolute;
-    inset: 0;
-    z-index: 6;
-    pointer-events: none;
-    overflow: hidden;
-}
-
-.intro-thread {
-    position: absolute;
-    height: 1px;
-    width: 0;
-    left: 0;
-    border-radius: 999px;
-    animation: threadRace 0.65s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-.intro-thread:nth-child(1) { top: 22%; background: linear-gradient(90deg, transparent, rgba(143,29,29,0.9), rgba(185,137,69,0.7), transparent); animation-delay: 0.10s; }
-.intro-thread:nth-child(2) { top: 38%; background: linear-gradient(90deg, transparent, rgba(255,248,237,0.6), rgba(143,29,29,0.8), transparent); animation-delay: 0.20s; }
-.intro-thread:nth-child(3) { top: 50%; background: linear-gradient(90deg, transparent, rgba(185,137,69,1), rgba(255,248,237,0.5), transparent); animation-delay: 0.08s; height: 2px; }
-.intro-thread:nth-child(4) { top: 62%; background: linear-gradient(90deg, transparent, rgba(143,29,29,0.7), rgba(185,137,69,0.6), transparent); animation-delay: 0.28s; }
-.intro-thread:nth-child(5) { top: 75%; background: linear-gradient(90deg, transparent, rgba(255,248,237,0.5), rgba(143,29,29,0.9), transparent); animation-delay: 0.16s; }
-.intro-thread:nth-child(6) { top: 14%; background: linear-gradient(90deg, transparent, rgba(185,137,69,0.5), transparent); animation-delay: 0.34s; }
-.intro-thread:nth-child(7) { top: 86%; background: linear-gradient(90deg, transparent, rgba(143,29,29,0.6), transparent); animation-delay: 0.26s; }
-.intro-thread:nth-child(8) { top: 44%; background: linear-gradient(90deg, transparent, rgba(255,248,237,0.4), rgba(185,137,69,0.8), transparent); animation-delay: 0.38s; }
-
-@keyframes threadRace {
-    0%   { width: 0;    opacity: 0; }
-    8%   { opacity: 1; }
-    60%  { width: 100%; opacity: 1; }
-    100% { width: 100%; opacity: 0.35; }
-}
-
-/* glowing needle tip running along centre thread */
-.intro-needle {
-    position: absolute;
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: #fff8ed;
-    top: 50%; left: 0;
-    transform: translateY(-50%);
-    z-index: 7;
-    box-shadow: 0 0 8px rgba(255,248,237,0.9), 0 0 20px rgba(185,137,69,0.7);
-    animation: needleRun 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.1s forwards;
-}
-
-@keyframes needleRun {
-    0%   { left: 0;              opacity: 0; }
-    8%   { opacity: 1; }
-    85%  { left: calc(100% - 6px); opacity: 1; }
-    100% { left: calc(100% - 6px); opacity: 0; }
-}
-
-/* ── PHASE 2b: Woven grid materialises ──────────────────────────── */
-.intro-weave {
-    position: absolute;
-    inset: 0;
-    z-index: 3;
-    opacity: 0;
-    background:
-        repeating-linear-gradient(90deg, rgba(143,29,29,0.18) 0px, rgba(143,29,29,0.18) 1px, transparent 1px, transparent 18px),
-        repeating-linear-gradient(0deg,  rgba(185,137,69,0.14) 0px, rgba(185,137,69,0.14) 1px, transparent 1px, transparent 18px);
-    animation: weaveReveal 0.5s ease 0.9s forwards;
-}
-
-@keyframes weaveReveal {
-    from { opacity: 0; }
-    to   { opacity: 1; }
-}
-
-/* ── PHASE 3: KT Impex logo reveal ─────────────────────────────── */
-.intro-logo-wrap {
-    position: relative;
-    z-index: 10;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 18px;
-    opacity: 0;
-    transform: scale(0.82) translateY(20px);
-}
-
-.intro-logo-wrap--visible {
-    animation: logoReveal 0.65s cubic-bezier(0.16, 1, 0.3, 1) 0.05s forwards;
-}
-
-@keyframes logoReveal {
-    0%   { opacity: 0; transform: scale(0.82) translateY(20px); filter: blur(10px); }
-    55%  { opacity: 1; transform: scale(1.04) translateY(-3px); filter: blur(0); }
-    100% { opacity: 1; transform: scale(1) translateY(0);       filter: blur(0); }
-}
-
-/* Badge — embroidery hoop style */
-.intro-kt-badge {
-    width: 100px; height: 100px;
-    border-radius: 50%;
-    background: radial-gradient(circle at 36% 34%, #c0392b, #5f1111 68%);
-    color: #fff8ed;
-    font-family: 'Playfair Display', serif;
-    font-size: 40px;
-    font-weight: 700;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow:
-        0 0 0 3px rgba(185,137,69,0.7),
-        0 0 0 6px rgba(143,29,29,0.3),
-        0 0 48px rgba(143,29,29,0.85),
-        0 0 96px rgba(143,29,29,0.4);
-    position: relative;
-    animation: badgePulse 2s ease-in-out infinite alternate;
-}
-
-/* rotating dashed embroidery ring */
-.intro-kt-badge::before {
-    content: '';
-    position: absolute;
-    inset: -10px;
-    border-radius: 50%;
-    border: 1.5px dashed rgba(185,137,69,0.55);
-    animation: ringRotate 8s linear infinite;
-}
-
-/* woven overlay on badge */
-.intro-kt-badge::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    background:
-        repeating-linear-gradient(45deg,  rgba(255,255,255,0.06) 0 2px, transparent 2px 6px),
-        repeating-linear-gradient(-45deg, rgba(255,255,255,0.04) 0 2px, transparent 2px 6px);
-    pointer-events: none;
+/* diagonal weave over badge */
+.pre-badge::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    repeating-linear-gradient(45deg,  rgba(255,255,255,.07) 0 2px, transparent 2px 7px),
+    repeating-linear-gradient(-45deg, rgba(255,255,255,.05) 0 2px, transparent 2px 7px);
+  pointer-events: none;
 }
 
 @keyframes badgePulse {
-    0%   { box-shadow: 0 0 0 3px rgba(185,137,69,0.7), 0 0 0 6px rgba(143,29,29,0.3), 0 0 48px rgba(143,29,29,0.85), 0 0 96px  rgba(143,29,29,0.4); }
-    100% { box-shadow: 0 0 0 5px rgba(185,137,69,0.9), 0 0 0 10px rgba(143,29,29,0.2), 0 0 72px rgba(192,57,43,1),   0 0 130px rgba(143,29,29,0.55); }
+  0%   { box-shadow: 0 0 0 3px rgba(185,137,69,.75), 0 0 0 7px rgba(143,29,29,.3), 0 0 52px rgba(143,29,29,.9),  0 0 100px rgba(143,29,29,.45); }
+  100% { box-shadow: 0 0 0 5px rgba(185,137,69,.95), 0 0 0 11px rgba(143,29,29,.2), 0 0 80px rgba(192,57,43,1),  0 0 140px rgba(143,29,29,.6); }
 }
 
 @keyframes ringRotate {
-    from { transform: rotate(0deg); }
-    to   { transform: rotate(360deg); }
+  to { transform: rotate(360deg); }
 }
 
-/* Brand name */
-.intro-brand-text {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-}
+.pre-brand { display:flex; flex-direction:column; align-items:center; gap:10px; }
 
-.intro-brand-name {
-    font-family: 'Playfair Display', serif;
-    font-size: clamp(44px, 9vw, 92px);
-    font-weight: 700;
-    color: #fff8ed;
-    line-height: 1;
-    letter-spacing: -0.01em;
-    text-shadow: 0 0 40px rgba(255,248,237,0.55), 0 2px 10px rgba(0,0,0,0.5);
-    animation: nameShine 2.2s ease-in-out infinite alternate;
+.pre-brand-name {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(48px, 10vw, 96px);
+  font-weight: 700;
+  color: #fff8ed;
+  line-height: 1;
+  letter-spacing: -.01em;
+  text-shadow: 0 0 40px rgba(255,248,237,.55), 0 2px 12px rgba(0,0,0,.5);
+  animation: nameShine 2.4s ease-in-out infinite alternate;
 }
 
 @keyframes nameShine {
-    0%   { text-shadow: 0 0 40px rgba(255,248,237,0.55), 0 2px 10px rgba(0,0,0,0.5); }
-    100% { text-shadow: 0 0 64px rgba(255,248,237,1), 0 0 20px rgba(185,137,69,0.7), 0 2px 10px rgba(0,0,0,0.3); }
+  0%   { text-shadow: 0 0 40px rgba(255,248,237,.55), 0 2px 12px rgba(0,0,0,.5); }
+  100% { text-shadow: 0 0 70px rgba(255,248,237,1), 0 0 24px rgba(185,137,69,.75), 0 2px 12px rgba(0,0,0,.3); }
 }
 
-.intro-brand-sub {
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.22em;
-    text-transform: uppercase;
-    color: rgba(185,137,69,0.92);
-    animation: subFade 0.55s ease 0.28s both;
+.pre-brand-sub {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .24em;
+  text-transform: uppercase;
+  color: rgba(185,137,69,.92);
+  opacity: 0;
+  transform: translateY(8px);
+  will-change: opacity, transform;
 }
 
-@keyframes subFade {
-    from { opacity: 0; letter-spacing: 0.38em; transform: translateY(8px); }
-    to   { opacity: 1; letter-spacing: 0.22em; transform: translateY(0); }
+/* self-drawing gold divider */
+.pre-divider {
+  height: 1px;
+  width: clamp(160px, 28vw, 280px);
+  background: linear-gradient(90deg, transparent, rgba(185,137,69,.9), transparent);
+  transform: scaleX(0);
+  will-change: transform;
 }
 
-/* gold divider that draws itself */
-.intro-divider {
-    width: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(185,137,69,0.9), transparent);
-    animation: dividerDraw 0.5s ease 0.3s forwards;
-}
-
-@keyframes dividerDraw {
-    from { width: 0; }
-    to   { width: clamp(160px, 30vw, 280px); }
-}
-
-/* Silk shimmer (logo phase only) */
-.intro-silk-wave {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    z-index: 2;
-    opacity: 0;
-    background:
-        repeating-linear-gradient(
-            118deg,
-            transparent 0 7%,
-            rgba(255,248,237,0.05) 7% 8%,
-            transparent 8% 16%
-        );
-    background-size: 200% 200%;
-}
-
-.intro-splash--logo .intro-silk-wave {
-    opacity: 1;
-    animation: silkDrift 3s ease-in-out infinite alternate;
+/* silk shimmer lines behind logo */
+.pre-silk {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  will-change: opacity;
+  background:
+    repeating-linear-gradient(
+      118deg,
+      transparent 0 7%,
+      rgba(255,248,237,.055) 7% 8%,
+      transparent 8% 16%
+    );
+  background-size: 300% 300%;
+  animation: silkDrift 5s ease-in-out infinite alternate;
 }
 
 @keyframes silkDrift {
-    0%   { background-position: 0% 0%;     opacity: 0.6; }
-    100% { background-position: 100% 100%; opacity: 1; }
+  0%   { background-position: 0% 0%; }
+  100% { background-position: 100% 100%; }
 }
 
-/* ── Page reveal ─────────────────────────────────────────────── */
+/* ── PHASE 4: Curtain exit ────────────────────────────────────── */
+.pre-curtain {
+  position: absolute;
+  top: 0; width: 50%; height: 100%;
+  will-change: transform;
+  background:
+    repeating-linear-gradient(90deg,
+      rgba(143,29,29,.72) 0 2px,
+      rgba(255,248,237,.05) 2px 8px,
+      rgba(95,17,17,.5) 8px 9px,
+      transparent 9px 14px
+    ),
+    repeating-linear-gradient(0deg,
+      rgba(185,137,69,.55) 0 1px,
+      rgba(255,248,237,.04) 1px 6px,
+      rgba(143,29,29,.4) 6px 7px,
+      transparent 7px 12px
+    ),
+    linear-gradient(108deg, #3d0e0e, #8f1d1d 30%, #c0392b 54%, #8f1d1d 76%, #2a0808);
+}
+.pre-curtain-left  { left: 0; transform-origin: left center; }
+.pre-curtain-right { right: 0; transform-origin: right center; }
+
+/* curtain edge sheen */
+.pre-curtain::after {
+  content: '';
+  position: absolute;
+  top: 0; width: 20px; height: 100%;
+  background: linear-gradient(90deg, rgba(185,137,69,.35), transparent);
+}
+.pre-curtain-left::after  { right: 0; }
+.pre-curtain-right::after { left: 0; transform: scaleX(-1); }
+
+/* ── Preloader progress bar ───────────────────────────────────── */
+.pre-progress {
+  position: absolute;
+  bottom: 0; left: 0;
+  height: 2px; width: 0;
+  background: linear-gradient(90deg, rgba(143,29,29,.8), rgba(185,137,69,1), rgba(255,248,237,.8));
+  will-change: width;
+  box-shadow: 0 0 8px rgba(185,137,69,.7);
+}
+
+/* ── Preloader done — remove from paint tree ──────────────────── */
+#kt-preloader.pre-done {
+  display: none;
+}
+
+
+/* =================================================================
+   AMBIENT BACKGROUND SYSTEM (throughout site)
+   3 layers — all transform/opacity only, GPU composited
+   ================================================================= */
+
+/* Layer 1: Static woven canvas — zero CPU, permanent */
+.page-reveal::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(90deg, rgba(143,29,29,.04) 0 1px, transparent 1px 22px),
+    repeating-linear-gradient(0deg,  rgba(185,137,69,.03) 0 1px, transparent 1px 22px);
+}
+
+/* Layer 2: Slow silk shimmer — 12s loop, GPU only */
+.page-reveal::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      118deg,
+      transparent 0 7%,
+      rgba(185,137,69,.04) 7% 8%,
+      transparent 8% 16%
+    );
+  background-size: 400% 400%;
+  animation: ambientSilk 12s ease-in-out infinite alternate;
+  will-change: background-position;
+}
+
+@keyframes ambientSilk {
+  0%   { background-position: 0% 0%; }
+  100% { background-position: 100% 100%; }
+}
+
+/* Layer 3: Canvas ripple — injected by JS, pointer devices only */
+#kt-ripple-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: .55;
+  contain: strict;
+  display: none; /* shown by JS after pointer check */
+}
+
+/* ── Page reveal ──────────────────────────────────────────────── */
 .page-reveal {
-    opacity: 0;
-    transform: translateY(16px);
-    pointer-events: none;
+  position: relative;
+  z-index: 1;
+  opacity: 0;
+  will-change: opacity, transform;
+  pointer-events: none;
+}
+.page-reveal.pre-visible {
+  pointer-events: all;
 }
 
-.page-reveal--visible {
-    animation: pageReveal 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-    pointer-events: all;
-}
-
-@keyframes pageReveal {
-    from { opacity: 0; transform: translateY(16px); filter: blur(5px); }
-    to   { opacity: 1; transform: translateY(0);    filter: blur(0); }
-}
-
-/* ── Reduce motion ─────────────────────────────────────────── */
+/* ── Reduced motion ───────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
-    .intro-splash { display: none; }
-    .page-reveal  { opacity: 1; transform: none; pointer-events: all; }
-    .page-reveal--visible { animation: none; }
+  #kt-preloader { display: none; }
+  .page-reveal  { opacity: 1 !important; transform: none !important; pointer-events: all; }
+  .page-reveal::after { animation: none; }
+  #kt-ripple-canvas { display: none !important; }
 }
