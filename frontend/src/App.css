@@ -32,9 +32,11 @@
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html { scroll-behavior: smooth; }
+
+/* ── Body background — !important overrides the #0d0806 set by intro.css preloader ── */
 body {
     font-family: 'Inter', sans-serif;
-    background: linear-gradient(135deg, rgba(143, 29, 29, 0.08), transparent 34%), var(--cream);
+    background: linear-gradient(135deg, rgba(143, 29, 29, 0.08), transparent 34%), var(--cream) !important;
     color: var(--ink);
     min-height: 100vh;
 }
