@@ -39,28 +39,21 @@ export default function LoginPage({ onLogin }) {
         const password = e.target.password.value.trim()
         const email    = isSignup ? (e.target.email?.value?.trim() || '') : ''
 
-        const endpoint = isSignup ? '/api/signup' : '/api/login'
+        const endpoint = isSignup ? '/signup' : '/login'
         const body     = isSignup ? { username, password, email } : { username, password }
 
         try {
-            const res  = await fetch(`${API}${endpoint}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body)
-            })
-            const data = await res.json()
-            if (!res.ok) {
-                setError(data.error || 'Something went wrong')
+            const res  = await API.post(endpoint, body)
+            const data = res.data
+            if (isSignup) {
+                setIsSignup(false)
+                setSuccess('Account created! Please login.')
             } else {
-                if (isSignup) {
-                    setIsSignup(false)
-                    setSuccess('Account created! Please login.')
-                } else {
-                    onLogin({ user_id: data.user_id, username: data.username, role: data.role })
-                }
+                onLogin({ user_id: data.user_id, username: data.username, role: data.role })
             }
-        } catch {
-            setError('Cannot connect to server. Is the backend running?')
+        } catch (err) {
+            const msg = err?.response?.data?.error
+            setError(msg || 'Cannot connect to server. Is the backend running?')
         }
         setLoading(false)
     }
@@ -148,7 +141,7 @@ export default function LoginPage({ onLogin }) {
                         <div className="founder-photo-wrap">
                             <img
                                 src="/founder.jpg"
-                                alt="Sandeep Kumar Agrawal – Founder, KT Impex"
+                                alt="Sandeep Kumar Agrawal \u2013 Founder, KT Impex"
                                 className="founder-photo-img"
                                 width="160"
                                 height="160"
