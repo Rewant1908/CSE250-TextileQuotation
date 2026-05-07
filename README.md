@@ -1,6 +1,5 @@
 # KT Impex — Textile Quotation & Operations System
 
-> **CSE250 – Database Management Systems Project**  
 > Full-stack B2B wholesale textile platform for KT Impex, Birgunj, Nepal.
 
 ---
@@ -276,11 +275,3 @@ Open `http://localhost:5173`
 - **Course**: CSE250 – Database Management Systems
 - **Business**: KT Impex (Textile Import & Export, Birgunj, Nepal)
 - **Database**: `kt_impex` (MariaDB)
-
----
-
-## 11. Team Members
-
-- Rewant Agrawal
-- Vijay Kumar
-- Kishna Rana
