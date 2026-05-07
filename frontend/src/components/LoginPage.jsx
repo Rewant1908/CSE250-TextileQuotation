@@ -141,7 +141,7 @@ export default function LoginPage({ onLogin }) {
                         <div className="founder-photo-wrap">
                             <img
                                 src="/founder.jpeg"
-                                alt="Sandeep Kumar Agrawal \u2013 Founder, KT Impex"
+                                alt="Sandeep Kumar Agrawal – Founder, KT Impex"
                                 className="founder-photo-img"
                                 width="160"
                                 height="160"
@@ -204,6 +204,7 @@ export default function LoginPage({ onLogin }) {
                             <p className="eyebrow">Sample Products</p>
                             <h2>Catalogue preview without MRP</h2>
                         </div>
+                    </div>
                     <div className="sample-grid">
                         {sampleProducts.map(product => (
                             <article className="sample-card" key={product.name}>
