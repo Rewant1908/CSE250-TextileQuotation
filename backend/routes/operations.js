@@ -6,7 +6,7 @@ import { flush } from '../cache.js';
 
 const router = express.Router();
 
-// ── GET /api/thans (global search, cached 30s) ────────────────────────────────
+// ── GET /api/thans (global search, cached 30s) ──────────────────────────────────
 router.get('/thans',
     checkPermission('VIEW_OPERATIONS'),
     cache((req) => `thans:${JSON.stringify(req.query)}`, 30),
@@ -129,14 +129,16 @@ router.get('/dashboard',
                  LIMIT 15`
             );
 
+            // FIX: was using tx.price and tx.discount which don't exist on transactions.
+            // transactions table stores the final charged amount as total_amount.
             const retailerSignals = await conn.query(
                 `SELECT
                     r.retailer_id, r.shop_name, r.market_location, r.payment_pattern,
                     r.preferred_categories, r.preferred_price_segment, r.outstanding_balance,
-                    COUNT(tx.transaction_id)                               AS order_count,
-                    COALESCE(SUM(tx.quantity), 0)                          AS meters_bought,
-                    COALESCE(SUM(tx.price * tx.quantity - tx.discount), 0) AS revenue,
-                    COALESCE(SUM(tx.margin), 0)                            AS margin
+                    COUNT(tx.transaction_id)                AS order_count,
+                    COALESCE(SUM(tx.quantity), 0)           AS meters_bought,
+                    COALESCE(SUM(tx.total_amount), 0)       AS revenue,
+                    COALESCE(SUM(tx.margin), 0)             AS margin
                  FROM retailers r
                  LEFT JOIN transactions tx ON r.retailer_id = tx.retailer_id
                  GROUP BY
@@ -172,7 +174,7 @@ router.get('/dashboard',
     }
 );
 
-// ── GET /api/inventory/search ─────────────────────────────────────────────────
+// ── GET /api/inventory/search ───────────────────────────────────────────────────
 router.get('/inventory/search', async (req, res) => {
     const q        = String(req.query.q || '').trim();
     const maxPrice = req.query.max_price ? Number(req.query.max_price) : null;
@@ -222,7 +224,7 @@ router.get('/inventory/search', async (req, res) => {
     finally { if (conn) conn.release(); }
 });
 
-// ── POST /api/admin/recalculate-speeds ───────────────────────────────────────
+// ── POST /api/admin/recalculate-speeds ────────────────────────────────────────
 router.post('/admin/recalculate-speeds', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
     const updated = await recalculateSpeeds();
     flush('thans:*').catch(() => {});
