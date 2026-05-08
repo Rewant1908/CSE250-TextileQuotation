@@ -18,4 +18,17 @@ API.interceptors.request.use((config) => {
     return config
 })
 
+// On 401, clear stale credentials so the user is sent back to login.
+API.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        if (error?.response?.status === 401) {
+            localStorage.removeItem('kt_impex_token')
+            localStorage.removeItem('kt_impex_user')
+            // Force reload to the login screen (LoginPage renders when user state is null)
+            window.location.reload()
+        }
+        return Promise.reject(error)
+    }
+)
 export default API
