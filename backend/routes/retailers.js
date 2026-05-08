@@ -4,7 +4,7 @@ import { checkPermission } from '../middleware/checkPermission.js';
 
 const router = express.Router();
 
-// GET /api/retailers
+// GET /api/retailers  — no auth needed for listing (dealers need to look up customers)
 router.get('/', async (req, res) => {
     let conn;
     try {
@@ -20,8 +20,8 @@ router.get('/', async (req, res) => {
     finally { if (conn) conn.release(); }
 });
 
-// POST /api/retailers
-router.post('/', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
+// POST /api/retailers — dealers + admin can register a retailer/customer
+router.post('/', checkPermission('CREATE_RETAILER'), async (req, res) => {
     const {
         shop_name, contact_person, phone, market_location,
         payment_pattern, preferred_categories, preferred_price_segment, notes
@@ -52,8 +52,8 @@ router.post('/', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
     finally { if (conn) conn.release(); }
 });
 
-// PUT /api/retailers/:id
-router.put('/:id', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
+// PUT /api/retailers/:id — admin only can edit retailer details
+router.put('/:id', checkPermission('UPDATE_RETAILER'), async (req, res) => {
     const {
         shop_name, contact_person, phone, market_location,
         payment_pattern, preferred_categories, preferred_price_segment,
