@@ -81,7 +81,9 @@ app.post('/api/login', async (req, res) => {
             'SELECT user_id, username, password, role FROM users WHERE username = ?', [username]
         );
         if (!user) return res.status(401).json({ error: 'Invalid username or password' });
-        const match = await bcrypt.compare(password, user.password);
+        // mariadb driver may return password as a Buffer — convert to string before bcrypt compare
+        const hash = Buffer.isBuffer(user.password) ? user.password.toString() : String(user.password);
+        const match = await bcrypt.compare(password, hash);
         if (!match) return res.status(401).json({ error: 'Invalid username or password' });
         res.json({ success: true, user_id: user.user_id, username: user.username, role: user.role });
     } catch (err) { res.status(500).json({ error: err.message }); }
@@ -386,10 +388,6 @@ app.get('/api/operations/dashboard', checkPermission('VIEW_OPERATIONS'), async (
              LIMIT 8`
         );
 
-        // ── DEAD STOCK WATCHLIST (fixed) ──────────────────────────────────────
-        // idle days = days since the LATEST movement of ANY type (stock_in OR stock_out)
-        // This means a brand-new than that arrived 40 days ago and was never sold
-        // correctly shows 40 idle days, not NULL.
         const deadStock = await conn.query(
             `SELECT
                 t.than_id,
@@ -405,8 +403,8 @@ app.get('/api/operations/dashboard', checkPermission('VIEW_OPERATIONS'), async (
                 t.movement_speed,
                 DATEDIFF(CURDATE(),
                     DATE(COALESCE(
-                        MAX(im.movement_date),   -- last movement of any type
-                        t.created_at             -- fallback: when the than was created
+                        MAX(im.movement_date),
+                        t.created_at
                     ))
                 ) AS days_without_movement
              FROM thans t
@@ -521,9 +519,7 @@ app.get('/api/inventory/search', async (req, res) => {
     finally { if (conn) conn.release(); }
 });
 
-// ─── BATCH movement_speed RECALCULATION (run once to fix existing data) ───────
-// POST /api/admin/recalculate-speeds
-// Useful to backfill movement_speed for all existing thans after this deploy.
+// ─── BATCH movement_speed RECALCULATION ──────────────────────────────────────
 app.post('/api/admin/recalculate-speeds', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
     let conn;
     try {
@@ -545,9 +541,9 @@ app.post('/api/admin/recalculate-speeds', checkPermission('MANAGE_PRODUCTS'), as
             const sales = Number(row.sale_count || 0);
             let speed;
             if (sales === 0)           speed = 'new';
-            else if (idle >= 60)       speed = 'dead';
-            else if (idle >= 30)       speed = 'slow';
-            else if (idle >= 8)        speed = 'medium';
+            else if (idle >= 90)       speed = 'dead';
+            else if (idle >= 45)       speed = 'slow';
+            else if (idle >= 14)       speed = 'medium';
             else                        speed = 'fast';
 
             await conn.query('UPDATE thans SET movement_speed = ? WHERE than_id = ?', [speed, row.than_id]);
