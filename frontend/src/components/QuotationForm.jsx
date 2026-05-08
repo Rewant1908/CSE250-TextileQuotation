@@ -2,18 +2,16 @@ import { useEffect, useState } from 'react'
 import API from '../api'
 
 export default function QuotationForm({ user }) {
-    const [products, setProducts]     = useState([])
+    const [products, setProducts]   = useState([])
     const [customerId, setCustomerId] = useState('')
-    const [items, setItems]           = useState([{ product_id: '', quantity: '' }])
-    const [toast, setToast]           = useState(null)
-    const [loading, setLoading]       = useState(false)
+    const [items, setItems]         = useState([{ product_id: '', quantity: '' }])
+    const [toast, setToast]         = useState(null)
+    const [loading, setLoading]     = useState(false)
 
     useEffect(() => {
-        // Bug 1 fix: was fetch(`${API}/api/products`) — [object Object]/api/products at runtime.
-        // Migrated to API.get() so baseURL is applied correctly.
-        API.get('/products')
-            .then(r => setProducts(r.data))
-            .catch(() => {})
+        fetch(`${API}/api/products`)
+            .then(r => r.json())
+            .then(setProducts)
     }, [])
 
     const showToast = (msg, type) => {
@@ -45,16 +43,19 @@ export default function QuotationForm({ user }) {
         if (validItems.length === 0) return showToast('Add at least one product with quantity.', 'error')
         setLoading(true)
         try {
-            // Bug 1 fix: was fetch(`${API}/api/create-quotation`) — same corruption.
-            const res = await API.post('/create-quotation', {
-                customer_id: Number(customerId),
-                user_id: user?.user_id ?? null,
-                items: validItems.map(i => ({
-                    product_id: Number(i.product_id),
-                    quantity:   parseFloat(i.quantity)
-                }))
+            const res = await fetch(`${API}/api/create-quotation`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    customer_id: Number(customerId),
+                    user_id: user?.user_id ?? null,
+                    items: validItems.map(i => ({
+                        product_id: Number(i.product_id),
+                        quantity:   parseFloat(i.quantity)
+                    }))
+                })
             })
-            const data = res.data
+            const data = await res.json()
             if (data.success) {
                 showToast(`Quotation #${data.quotation_id} created! Status: Pending admin approval.`, 'success')
                 setCustomerId('')
@@ -62,8 +63,8 @@ export default function QuotationForm({ user }) {
             } else {
                 showToast(data.error || 'Something went wrong.', 'error')
             }
-        } catch (err) {
-            showToast(err?.response?.data?.error || 'Could not connect to server.', 'error')
+        } catch {
+            showToast('Could not connect to server.', 'error')
         }
         setLoading(false)
     }
