@@ -4,7 +4,7 @@ import { checkPermission } from '../middleware/checkPermission.js';
 
 const router = express.Router();
 
-// Exact ENUM values from schema.sql — must match DB exactly
+// Exact ENUM values from live DB
 // payment_pattern ENUM('advance','on_delivery','credit_good','credit_slow','risky')
 // preferred_price_segment ENUM('budget','mid','premium','mixed')
 const PAYMENT_PATTERNS = ['advance', 'on_delivery', 'credit_good', 'credit_slow', 'risky'];
@@ -18,12 +18,10 @@ router.get('/', checkPermission('VIEW_RETAILERS'), async (req, res) => {
     let conn;
     try {
         conn = await pool.getConnection();
-        // Note: schema uses phone_number not phone, shop_name not business_name
         const rows = await conn.query(
-            `SELECT retailer_id, customer_id, shop_name, market_location,
-                    phone_number, preferred_categories, payment_pattern,
-                    average_order_size, outstanding_balance,
-                    preferred_price_segment, notes
+            `SELECT retailer_id, shop_name, contact_person, phone, market_location,
+                    payment_pattern, preferred_categories, preferred_price_segment,
+                    outstanding_balance, notes
              FROM retailers ORDER BY shop_name`
         );
         res.json(rows);
@@ -36,9 +34,8 @@ router.get('/', checkPermission('VIEW_RETAILERS'), async (req, res) => {
 // POST /api/retailers
 router.post('/', checkPermission('CREATE_RETAILER'), async (req, res) => {
     const {
-        shop_name, market_location, phone_number,
-        preferred_categories, payment_pattern,
-        preferred_price_segment, notes
+        shop_name, contact_person, phone, market_location,
+        payment_pattern, preferred_categories, preferred_price_segment, notes
     } = req.body;
     if (!shop_name?.trim()) return res.status(400).json({ error: 'shop_name is required' });
     let conn;
@@ -46,16 +43,17 @@ router.post('/', checkPermission('CREATE_RETAILER'), async (req, res) => {
         conn = await pool.getConnection();
         const result = await conn.query(
             `INSERT INTO retailers
-                (shop_name, market_location, phone_number,
-                 preferred_categories, payment_pattern,
-                 outstanding_balance, preferred_price_segment, notes)
-             VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
+                (shop_name, contact_person, phone, market_location,
+                 payment_pattern, preferred_categories, preferred_price_segment,
+                 outstanding_balance, notes)
+             VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`,
             [
                 shop_name.trim(),
+                contact_person?.trim()       || null,
+                phone?.trim()                || null,
                 market_location?.trim()      || null,
-                phone_number?.trim()         || null,
-                preferred_categories?.trim() || null,
                 sanitizePayment(payment_pattern),
+                preferred_categories?.trim() || null,
                 sanitizeSegment(preferred_price_segment),
                 notes?.trim()                || null
             ]
@@ -70,9 +68,9 @@ router.post('/', checkPermission('CREATE_RETAILER'), async (req, res) => {
 // PUT /api/retailers/:id
 router.put('/:id', checkPermission('UPDATE_RETAILER'), async (req, res) => {
     const {
-        shop_name, market_location, phone_number,
-        preferred_categories, payment_pattern,
-        preferred_price_segment, outstanding_balance, notes
+        shop_name, contact_person, phone, market_location,
+        payment_pattern, preferred_categories, preferred_price_segment,
+        outstanding_balance, notes
     } = req.body;
     if (!shop_name?.trim()) return res.status(400).json({ error: 'shop_name is required' });
     let conn;
@@ -80,18 +78,19 @@ router.put('/:id', checkPermission('UPDATE_RETAILER'), async (req, res) => {
         conn = await pool.getConnection();
         await conn.query(
             `UPDATE retailers
-             SET shop_name=?, market_location=?, phone_number=?,
-                 preferred_categories=?, payment_pattern=?,
-                 outstanding_balance=?, preferred_price_segment=?, notes=?
+             SET shop_name=?, contact_person=?, phone=?, market_location=?,
+                 payment_pattern=?, preferred_categories=?, preferred_price_segment=?,
+                 outstanding_balance=?, notes=?
              WHERE retailer_id=?`,
             [
                 shop_name.trim(),
+                contact_person?.trim()       || null,
+                phone?.trim()                || null,
                 market_location?.trim()      || null,
-                phone_number?.trim()         || null,
-                preferred_categories?.trim() || null,
                 sanitizePayment(payment_pattern),
-                Number(outstanding_balance   || 0),
+                preferred_categories?.trim() || null,
                 sanitizeSegment(preferred_price_segment),
+                Number(outstanding_balance   || 0),
                 notes?.trim()                || null,
                 req.params.id
             ]
