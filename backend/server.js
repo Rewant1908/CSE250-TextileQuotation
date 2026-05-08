@@ -4,6 +4,8 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import pool from './db.js';
 import { checkPermission } from './middleware/checkPermission.js';
+import { cache, invalidate } from './middleware/cacheMiddleware.js';
+import { isReady, flush } from './cache.js';
 import retailerRoutes from './routes/retailers.js';
 import salesRoutes from './routes/sales.js';
 import agentRoutes from './routes/agents.js';
@@ -46,6 +48,11 @@ app.get('/api/health', async (req, res) => {
     } catch (err) {
         res.status(503).json({ api: 'ok', database: 'disconnected', error: err.code || err.message });
     } finally { if (conn) conn.release(); }
+});
+
+// ─── CACHE STATUS (admin debug) ───────────────────────────────────────────────
+app.get('/api/cache/status', checkPermission('VIEW_OPERATIONS'), (req, res) => {
+    res.json({ redis: isReady() ? 'connected' : 'unavailable', cache_enabled: process.env.CACHE_ENABLED !== 'false' });
 });
 
 // ─── AUTH: SIGNUP ─────────────────────────────────────────────────────────────
@@ -170,7 +177,8 @@ app.get('/api/suppliers', async (req, res) => {
 });
 
 // ─── BALES ────────────────────────────────────────────────────────────────────
-app.post('/api/bales', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
+// invalidate 'dashboard' whenever a new bale is registered
+app.post('/api/bales', checkPermission('MANAGE_PRODUCTS'), invalidate('dashboard'), async (req, res) => {
     const {
         bale_code, supplier_id, factory_name, arrival_date,
         purchase_cost, transport_cost, total_rolls,
@@ -253,7 +261,8 @@ app.get('/api/bales/:id', checkPermission('VIEW_OPERATIONS'), async (req, res) =
     finally { if (conn) conn.release(); }
 });
 
-app.post('/api/bales/:id/thans', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
+// Breakdown bale → thans: invalidates dashboard AND all thans cache keys
+app.post('/api/bales/:id/thans', checkPermission('MANAGE_PRODUCTS'), invalidate('dashboard'), async (req, res) => {
     const baleId = Number(req.params.id);
     if (!Number.isInteger(baleId) || baleId <= 0)
         return res.status(400).json({ error: 'Invalid bale ID' });
@@ -327,6 +336,10 @@ app.post('/api/bales/:id/thans', checkPermission('MANAGE_PRODUCTS'), async (req,
         );
 
         await conn.commit();
+
+        // Flush all per-query thans cache keys after successful breakdown
+        flush('thans:*').catch(() => {});
+
         res.status(201).json({ success: true, inserted: insertedIds.length, than_ids: insertedIds });
     } catch (err) {
         if (conn) await conn.rollback();
@@ -358,166 +371,174 @@ app.get('/api/bales/:id/thans', checkPermission('VIEW_OPERATIONS'), async (req, 
     finally { if (conn) conn.release(); }
 });
 
-// ─── THANS: global search endpoint ───────────────────────────────────────────
-app.get('/api/thans', checkPermission('VIEW_OPERATIONS'), async (req, res) => {
-    const { fabric_type, color, design, movement_speed, status, min_stock } = req.query;
-    const clauses = [];
-    const params  = [];
+// ─── THANS: global search — cached per unique query string, TTL 30s ───────────
+app.get('/api/thans',
+    checkPermission('VIEW_OPERATIONS'),
+    cache((req) => `thans:${JSON.stringify(req.query)}`, 30),
+    async (req, res) => {
+        const { fabric_type, color, design, movement_speed, status, min_stock } = req.query;
+        const clauses = [];
+        const params  = [];
 
-    if (fabric_type)    { clauses.push('t.fabric_type    LIKE ?'); params.push(`%${fabric_type}%`); }
-    if (color)          { clauses.push('t.color          LIKE ?'); params.push(`%${color}%`); }
-    if (design)         { clauses.push('t.design         LIKE ?'); params.push(`%${design}%`); }
-    if (movement_speed) { clauses.push('t.movement_speed  = ?');  params.push(movement_speed); }
-    if (status)         { clauses.push('t.status          = ?');  params.push(status); }
-    if (min_stock)      { clauses.push('t.remaining_stock >= ?'); params.push(Number(min_stock)); }
+        if (fabric_type)    { clauses.push('t.fabric_type    LIKE ?'); params.push(`%${fabric_type}%`); }
+        if (color)          { clauses.push('t.color          LIKE ?'); params.push(`%${color}%`); }
+        if (design)         { clauses.push('t.design         LIKE ?'); params.push(`%${design}%`); }
+        if (movement_speed) { clauses.push('t.movement_speed  = ?');  params.push(movement_speed); }
+        if (status)         { clauses.push('t.status          = ?');  params.push(status); }
+        if (min_stock)      { clauses.push('t.remaining_stock >= ?'); params.push(Number(min_stock)); }
 
-    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+        const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
 
-    let conn;
-    try {
-        conn = await pool.getConnection();
-        const rows = await conn.query(
-            `SELECT t.than_id, t.than_code, t.bale_id, t.fabric_type, t.color, t.design,
-                    t.gsm, t.meter_length, t.remaining_stock, t.cost_per_meter,
-                    t.selling_price, t.warehouse_location, t.movement_speed, t.status,
-                    ROUND(t.selling_price - t.cost_per_meter, 2) AS margin_per_meter,
-                    p.product_name, p.category,
-                    b.bale_code, b.arrival_date
-             FROM thans t
-             LEFT JOIN products p ON t.product_id = p.product_id
-             LEFT JOIN bales   b ON t.bale_id     = b.bale_id
-             ${where}
-             ORDER BY
-                CASE t.movement_speed
-                    WHEN 'fast'   THEN 0
-                    WHEN 'medium' THEN 1
-                    WHEN 'slow'   THEN 2
-                    WHEN 'new'    THEN 3
-                    WHEN 'dead'   THEN 4
-                END,
-                t.remaining_stock DESC
-             LIMIT 200`,
-            params
-        );
-        res.json(rows);
-    } catch (err) { res.status(500).json({ error: err.message }); }
-    finally { if (conn) conn.release(); }
-});
+        let conn;
+        try {
+            conn = await pool.getConnection();
+            const rows = await conn.query(
+                `SELECT t.than_id, t.than_code, t.bale_id, t.fabric_type, t.color, t.design,
+                        t.gsm, t.meter_length, t.remaining_stock, t.cost_per_meter,
+                        t.selling_price, t.warehouse_location, t.movement_speed, t.status,
+                        ROUND(t.selling_price - t.cost_per_meter, 2) AS margin_per_meter,
+                        p.product_name, p.category,
+                        b.bale_code, b.arrival_date
+                 FROM thans t
+                 LEFT JOIN products p ON t.product_id = p.product_id
+                 LEFT JOIN bales   b ON t.bale_id     = b.bale_id
+                 ${where}
+                 ORDER BY
+                    CASE t.movement_speed
+                        WHEN 'fast'   THEN 0
+                        WHEN 'medium' THEN 1
+                        WHEN 'slow'   THEN 2
+                        WHEN 'new'    THEN 3
+                        WHEN 'dead'   THEN 4
+                    END,
+                    t.remaining_stock DESC
+                 LIMIT 200`,
+                params
+            );
+            res.json(rows);
+        } catch (err) { res.status(500).json({ error: err.message }); }
+        finally { if (conn) conn.release(); }
+    }
+);
 
-// ─── OPERATIONS DASHBOARD ─────────────────────────────────────────────────────
-app.get('/api/operations/dashboard', checkPermission('VIEW_OPERATIONS'), async (req, res) => {
-    let conn;
-    try {
-        conn = await pool.getConnection();
+// ─── OPERATIONS DASHBOARD — cached 60s ────────────────────────────────────────
+app.get('/api/operations/dashboard',
+    checkPermission('VIEW_OPERATIONS'),
+    cache('dashboard', 60),
+    async (req, res) => {
+        let conn;
+        try {
+            conn = await pool.getConnection();
 
-        const [summary] = await conn.query(
-            `SELECT
-                COUNT(DISTINCT b.bale_id)  AS total_bales,
-                COUNT(DISTINCT t.than_id)  AS total_thans,
-                COALESCE(SUM(t.remaining_stock), 0)                                           AS available_meters,
-                COALESCE(SUM(t.remaining_stock * t.cost_per_meter), 0)                        AS stock_cost_value,
-                COALESCE(SUM(t.remaining_stock * t.selling_price), 0)                         AS stock_retail_value,
-                COALESCE(SUM((t.selling_price - t.cost_per_meter) * t.remaining_stock), 0)    AS unrealized_margin,
-                SUM(CASE WHEN t.movement_speed = 'dead' THEN 1 ELSE 0 END)                    AS dead_than_count,
-                COALESCE(SUM(CASE WHEN t.movement_speed = 'dead'
-                    THEN t.remaining_stock * t.cost_per_meter ELSE 0 END), 0)                 AS dead_stock_value
-             FROM thans t
-             LEFT JOIN bales b ON t.bale_id = b.bale_id`
-        );
+            const [summary] = await conn.query(
+                `SELECT
+                    COUNT(DISTINCT b.bale_id)  AS total_bales,
+                    COUNT(DISTINCT t.than_id)  AS total_thans,
+                    COALESCE(SUM(t.remaining_stock), 0)                                           AS available_meters,
+                    COALESCE(SUM(t.remaining_stock * t.cost_per_meter), 0)                        AS stock_cost_value,
+                    COALESCE(SUM(t.remaining_stock * t.selling_price), 0)                         AS stock_retail_value,
+                    COALESCE(SUM((t.selling_price - t.cost_per_meter) * t.remaining_stock), 0)    AS unrealized_margin,
+                    SUM(CASE WHEN t.movement_speed = 'dead' THEN 1 ELSE 0 END)                    AS dead_than_count,
+                    COALESCE(SUM(CASE WHEN t.movement_speed = 'dead'
+                        THEN t.remaining_stock * t.cost_per_meter ELSE 0 END), 0)                 AS dead_stock_value
+                 FROM thans t
+                 LEFT JOIN bales b ON t.bale_id = b.bale_id`
+            );
 
-        const categoryMovement = await conn.query(
-            `SELECT
-                COALESCE(p.category, t.fabric_type) AS category,
-                COUNT(DISTINCT t.than_id)            AS than_count,
-                COALESCE(SUM(t.remaining_stock), 0)  AS remaining_meters,
-                COALESCE(SUM(tx.quantity), 0)         AS sold_meters,
-                COALESCE(SUM(tx.margin), 0)           AS realized_margin,
-                ROUND(
-                    COALESCE(SUM(tx.quantity), 0) /
-                    NULLIF(COALESCE(SUM(tx.quantity), 0) + COALESCE(SUM(t.remaining_stock), 0), 0),
-                    3
-                ) AS sell_through_rate
-             FROM thans t
-             LEFT JOIN products p ON t.product_id = p.product_id
-             LEFT JOIN (
-                SELECT than_id, SUM(quantity) AS quantity, SUM(margin) AS margin
-                FROM transactions
-                GROUP BY than_id
-             ) tx ON tx.than_id = t.than_id
-             GROUP BY COALESCE(p.category, t.fabric_type)
-             ORDER BY sold_meters DESC, realized_margin DESC
-             LIMIT 8`
-        );
+            const categoryMovement = await conn.query(
+                `SELECT
+                    COALESCE(p.category, t.fabric_type) AS category,
+                    COUNT(DISTINCT t.than_id)            AS than_count,
+                    COALESCE(SUM(t.remaining_stock), 0)  AS remaining_meters,
+                    COALESCE(SUM(tx.quantity), 0)         AS sold_meters,
+                    COALESCE(SUM(tx.margin), 0)           AS realized_margin,
+                    ROUND(
+                        COALESCE(SUM(tx.quantity), 0) /
+                        NULLIF(COALESCE(SUM(tx.quantity), 0) + COALESCE(SUM(t.remaining_stock), 0), 0),
+                        3
+                    ) AS sell_through_rate
+                 FROM thans t
+                 LEFT JOIN products p ON t.product_id = p.product_id
+                 LEFT JOIN (
+                    SELECT than_id, SUM(quantity) AS quantity, SUM(margin) AS margin
+                    FROM transactions
+                    GROUP BY than_id
+                 ) tx ON tx.than_id = t.than_id
+                 GROUP BY COALESCE(p.category, t.fabric_type)
+                 ORDER BY sold_meters DESC, realized_margin DESC
+                 LIMIT 8`
+            );
 
-        const deadStock = await conn.query(
-            `SELECT
-                t.than_id, t.than_code, t.fabric_type, t.color, t.design,
-                t.remaining_stock, t.cost_per_meter, t.selling_price,
-                ROUND(t.remaining_stock * t.cost_per_meter, 2) AS cost_value,
-                t.warehouse_location, t.movement_speed,
-                DATEDIFF(CURDATE(),
-                    DATE(COALESCE(MAX(im.movement_date), t.created_at))
-                ) AS days_without_movement
-             FROM thans t
-             LEFT JOIN inventory_movements im ON im.than_id = t.than_id
-             WHERE t.remaining_stock > 0
-             GROUP BY
-                t.than_id, t.than_code, t.fabric_type, t.color, t.design,
-                t.remaining_stock, t.cost_per_meter, t.selling_price,
-                t.warehouse_location, t.movement_speed, t.created_at
-             ORDER BY
-                CASE t.movement_speed
-                    WHEN 'dead' THEN 0
-                    WHEN 'slow' THEN 1
-                    WHEN 'new'  THEN 2
-                    ELSE 3
-                END,
-                days_without_movement DESC, t.remaining_stock DESC
-             LIMIT 15`
-        );
+            const deadStock = await conn.query(
+                `SELECT
+                    t.than_id, t.than_code, t.fabric_type, t.color, t.design,
+                    t.remaining_stock, t.cost_per_meter, t.selling_price,
+                    ROUND(t.remaining_stock * t.cost_per_meter, 2) AS cost_value,
+                    t.warehouse_location, t.movement_speed,
+                    DATEDIFF(CURDATE(),
+                        DATE(COALESCE(MAX(im.movement_date), t.created_at))
+                    ) AS days_without_movement
+                 FROM thans t
+                 LEFT JOIN inventory_movements im ON im.than_id = t.than_id
+                 WHERE t.remaining_stock > 0
+                 GROUP BY
+                    t.than_id, t.than_code, t.fabric_type, t.color, t.design,
+                    t.remaining_stock, t.cost_per_meter, t.selling_price,
+                    t.warehouse_location, t.movement_speed, t.created_at
+                 ORDER BY
+                    CASE t.movement_speed
+                        WHEN 'dead' THEN 0
+                        WHEN 'slow' THEN 1
+                        WHEN 'new'  THEN 2
+                        ELSE 3
+                    END,
+                    days_without_movement DESC, t.remaining_stock DESC
+                 LIMIT 15`
+            );
 
-        const retailerSignals = await conn.query(
-            `SELECT
-                r.retailer_id, r.shop_name, r.market_location, r.payment_pattern,
-                r.preferred_categories, r.preferred_price_segment, r.outstanding_balance,
-                COUNT(tx.transaction_id)                               AS order_count,
-                COALESCE(SUM(tx.quantity), 0)                          AS meters_bought,
-                COALESCE(SUM(tx.price * tx.quantity - tx.discount), 0) AS revenue,
-                COALESCE(SUM(tx.margin), 0)                            AS margin
-             FROM retailers r
-             LEFT JOIN transactions tx ON r.retailer_id = tx.retailer_id
-             GROUP BY
-                r.retailer_id, r.shop_name, r.market_location, r.payment_pattern,
-                r.preferred_categories, r.preferred_price_segment, r.outstanding_balance
-             ORDER BY revenue DESC, meters_bought DESC
-             LIMIT 8`
-        );
+            const retailerSignals = await conn.query(
+                `SELECT
+                    r.retailer_id, r.shop_name, r.market_location, r.payment_pattern,
+                    r.preferred_categories, r.preferred_price_segment, r.outstanding_balance,
+                    COUNT(tx.transaction_id)                               AS order_count,
+                    COALESCE(SUM(tx.quantity), 0)                          AS meters_bought,
+                    COALESCE(SUM(tx.price * tx.quantity - tx.discount), 0) AS revenue,
+                    COALESCE(SUM(tx.margin), 0)                            AS margin
+                 FROM retailers r
+                 LEFT JOIN transactions tx ON r.retailer_id = tx.retailer_id
+                 GROUP BY
+                    r.retailer_id, r.shop_name, r.market_location, r.payment_pattern,
+                    r.preferred_categories, r.preferred_price_segment, r.outstanding_balance
+                 ORDER BY revenue DESC, meters_bought DESC
+                 LIMIT 8`
+            );
 
-        const supplierSignals = await conn.query(
-            `SELECT
-                s.supplier_id, s.supplier_name, s.quality_rating,
-                s.delay_frequency, s.trend_alignment,
-                COUNT(DISTINCT b.bale_id)    AS bales_received,
-                COUNT(DISTINCT t.than_id)    AS thans_created,
-                COALESCE(SUM(tx.quantity), 0) AS meters_sold,
-                COALESCE(SUM(tx.margin), 0)   AS realized_margin
-             FROM suppliers s
-             LEFT JOIN bales b ON s.supplier_id = b.supplier_id
-             LEFT JOIN thans t ON b.bale_id = t.bale_id
-             LEFT JOIN (
-                SELECT than_id, SUM(quantity) AS quantity, SUM(margin) AS margin
-                FROM transactions
-                GROUP BY than_id
-             ) tx ON t.than_id = tx.than_id
-             GROUP BY s.supplier_id, s.supplier_name, s.quality_rating, s.delay_frequency, s.trend_alignment
-             ORDER BY realized_margin DESC, meters_sold DESC`
-        );
+            const supplierSignals = await conn.query(
+                `SELECT
+                    s.supplier_id, s.supplier_name, s.quality_rating,
+                    s.delay_frequency, s.trend_alignment,
+                    COUNT(DISTINCT b.bale_id)    AS bales_received,
+                    COUNT(DISTINCT t.than_id)    AS thans_created,
+                    COALESCE(SUM(tx.quantity), 0) AS meters_sold,
+                    COALESCE(SUM(tx.margin), 0)   AS realized_margin
+                 FROM suppliers s
+                 LEFT JOIN bales b ON s.supplier_id = b.supplier_id
+                 LEFT JOIN thans t ON b.bale_id = t.bale_id
+                 LEFT JOIN (
+                    SELECT than_id, SUM(quantity) AS quantity, SUM(margin) AS margin
+                    FROM transactions
+                    GROUP BY than_id
+                 ) tx ON t.than_id = tx.than_id
+                 GROUP BY s.supplier_id, s.supplier_name, s.quality_rating, s.delay_frequency, s.trend_alignment
+                 ORDER BY realized_margin DESC, meters_sold DESC`
+            );
 
-        res.json({ summary, categoryMovement, deadStock, retailerSignals, supplierSignals });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    } finally { if (conn) conn.release(); }
-});
+            res.json({ summary, categoryMovement, deadStock, retailerSignals, supplierSignals });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        } finally { if (conn) conn.release(); }
+    }
+);
 
 // ─── INVENTORY SEARCH ─────────────────────────────────────────────────────────
 app.get('/api/inventory/search', async (req, res) => {
@@ -572,6 +593,9 @@ app.get('/api/inventory/search', async (req, res) => {
 // ─── MOVEMENT SPEED RECALCULATION (manual trigger) ────────────────────────────
 app.post('/api/admin/recalculate-speeds', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
     const updated = await recalculateSpeeds();
+    // Invalidate both dashboard and all thans cache after recalculation
+    flush('thans:*').catch(() => {});
+    flush('dashboard').catch(() => {});
     res.json({ success: true, updated });
 });
 
@@ -610,12 +634,12 @@ async function recalculateSpeeds() {
 }
 
 // ─── CRON: auto-recalculate every day at midnight ─────────────────────────────
-// Runs purely in-process — no external cron dependency needed.
-// Interval: 24 hours (86_400_000 ms)
 const CRON_INTERVAL_MS = 24 * 60 * 60 * 1000;
 setInterval(async () => {
     try {
         const updated = await recalculateSpeeds();
+        flush('thans:*').catch(() => {});
+        flush('dashboard').catch(() => {});
         console.log(`[cron] movement_speed recalculated — ${updated} thans updated`);
     } catch (err) {
         console.error('[cron] recalculateSpeeds failed:', err.message);
