@@ -46,14 +46,8 @@ export default function AgentChat({ user }) {
     const [messages, setMessages] = useState([])
     const [query,    setQuery]    = useState('')
     const [loading,  setLoading]  = useState(false)
-    const [error,    setError]    = useState(null)
     const bottomRef = useRef(null)
     const textareaRef = useRef(null)
-
-    const authHeaders = useCallback(
-        () => ({ 'x-user-id': String(user.user_id), 'x-user-role': user.role }),
-        [user.user_id, user.role]
-    )
 
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -67,36 +61,35 @@ export default function AgentChat({ user }) {
         setMessages(prev => [...prev, userMsg])
         setQuery('')
         setLoading(true)
-        setError(null)
 
         const t0 = Date.now()
         try {
             const res = await API.post(
-                '/agent/query',
-                { agent, query: text },
-                { headers: authHeaders() }
+                '/agents/query',
+                { agent, query: text }
             )
             const data = res.data
+            // Backend returns: { agentName, fullResponse, verdict, durationMs, model }
             setMessages(prev => [...prev, {
-                role: 'assistant',
-                content: data.response || data.message || JSON.stringify(data),
-                agent:   data.agent   || agent,
-                model:   data.model   || '',
+                role:    'assistant',
+                content: data.fullResponse || data.response || JSON.stringify(data),
+                agent:   data.agentName   || data.agent || agent,
+                model:   data.model       || '',
+                verdict: data.verdict     || null,
                 ms:      Date.now() - t0,
                 ts:      Date.now(),
             }])
         } catch (err) {
             const msg = err?.response?.data?.error || err.message || 'Agent request failed'
-            setError(msg)
             setMessages(prev => [...prev, {
-                role: 'error',
+                role:    'error',
                 content: msg,
-                ts: Date.now(),
+                ts:      Date.now(),
             }])
         } finally {
             setLoading(false)
         }
-    }, [agent, query, loading, authHeaders])
+    }, [agent, query, loading])
 
     const handleKeyDown = (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -156,6 +149,11 @@ export default function AgentChat({ user }) {
                             )}
                             {msg.role === 'assistant' && (
                                 <div className="ac-bubble ac-bubble--assistant">
+                                    {msg.verdict && (
+                                        <div style={{ fontWeight: 700, marginBottom: 6, color: 'var(--red-dark)', fontSize: 12 }}>
+                                            {msg.verdict}
+                                        </div>
+                                    )}
                                     <div
                                         className="ac-md"
                                         dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}

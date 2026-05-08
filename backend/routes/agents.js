@@ -31,7 +31,17 @@ router.post('/query', checkPermission('VIEW_OPERATIONS'), async (req, res) => {
             context:  context || '',
             username: req.user?.username || 'system',
         })
-        res.json(result)
+        // Normalize response keys so the frontend can read both agentName and agent,
+        // and both fullResponse and response.
+        res.json({
+            agent:        result.agentName,
+            agentName:    result.agentName,
+            response:     result.fullResponse,
+            fullResponse: result.fullResponse,
+            verdict:      result.verdict,
+            durationMs:   result.durationMs,
+            model:        result.model,
+        })
     } catch (err) {
         console.error('[agentRoute] query error:', err.message)
         res.status(500).json({ error: err.message })
