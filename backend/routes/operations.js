@@ -129,16 +129,17 @@ router.get('/dashboard',
                  LIMIT 15`
             );
 
-            // FIX: was using tx.price and tx.discount which don't exist on transactions.
-            // transactions table stores the final charged amount as total_amount.
+            // transactions columns: transaction_id, retailer_id, quotation_id, than_id,
+            // product_id, quantity, price, discount, payment_method, margin, transaction_date
+            // Revenue = (price * quantity) - discount
             const retailerSignals = await conn.query(
                 `SELECT
                     r.retailer_id, r.shop_name, r.market_location, r.payment_pattern,
                     r.preferred_categories, r.preferred_price_segment, r.outstanding_balance,
-                    COUNT(tx.transaction_id)                AS order_count,
-                    COALESCE(SUM(tx.quantity), 0)           AS meters_bought,
-                    COALESCE(SUM(tx.total_amount), 0)       AS revenue,
-                    COALESCE(SUM(tx.margin), 0)             AS margin
+                    COUNT(tx.transaction_id)                                   AS order_count,
+                    COALESCE(SUM(tx.quantity), 0)                              AS meters_bought,
+                    COALESCE(SUM(tx.price * tx.quantity - tx.discount), 0)     AS revenue,
+                    COALESCE(SUM(tx.margin), 0)                                AS margin
                  FROM retailers r
                  LEFT JOIN transactions tx ON r.retailer_id = tx.retailer_id
                  GROUP BY
