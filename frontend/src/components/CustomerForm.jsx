@@ -1,4 +1,5 @@
 import { useState } from 'react'
+
 import API from '../api'
 
 export default function CustomerForm() {
@@ -16,18 +17,20 @@ export default function CustomerForm() {
         if (!form.customer_name.trim()) return showToast('Customer name is required.', 'error')
         setLoading(true)
         try {
-            // Bug 1 fix: was `fetch(`${API}/api/enquiry`, ...)` — API is an axios instance
-            // so `${API}` evaluated to "[object Object]". Now using axios instance directly.
-            const res = await API.post('/enquiry', form)
-            const data = res.data
+            const res = await fetch(`${API}/api/enquiry`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(form)
+            })
+            const data = await res.json()
             if (data.success) {
                 showToast(`Customer registered! ID: ${data.customer_id}`, 'success')
                 setForm({ customer_name: '', contact_phone: '', email: '' })
             } else {
                 showToast(data.error || 'Something went wrong.', 'error')
             }
-        } catch (err) {
-            showToast(err?.response?.data?.error || 'Could not connect to server.', 'error')
+        } catch {
+            showToast('Could not connect to server.', 'error')
         }
         setLoading(false)
     }
