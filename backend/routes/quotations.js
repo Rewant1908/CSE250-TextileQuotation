@@ -1,12 +1,10 @@
 /**
  * /api/quotations
  *
- * FIXED schema mismatch: this project's quotations table uses the
- * CustomerForm / QuotationForm schema, NOT a retailer-join schema.
- * Columns: quotation_id, user_id, customer_name, grand_total, status,
- *          decline_reason, created_at
- * Child table quotation_items: id, quotation_id, product_id, product_name,
- *          quantity, unit_price, line_total
+ * Schema: quotation_id, user_id, customer_name, grand_total, status,
+ *         decline_reason, created_at
+ * Child:  quotation_items: id, quotation_id, product_id, product_name,
+ *         quantity, unit_price, line_total
  */
 
 import { Router } from 'express';
@@ -15,8 +13,14 @@ import { checkPermission } from '../middleware/checkPermission.js';
 
 const router = Router();
 
+// MariaDB returns BigInt for AUTO_INCREMENT ids — JSON.stringify blows up on BigInt.
+// This helper converts every BigInt to Number before sending.
+const serialize = (data) =>
+    JSON.parse(JSON.stringify(data, (_, v) =>
+        typeof v === 'bigint' ? Number(v) : v
+    ));
+
 // ── GET /api/quotations ───────────────────────────────────────────────────────
-// Admin: all quotations. Dealer: only their own (filtered by user_id query param).
 router.get('/', checkPermission('VIEW_QUOTATIONS'), async (req, res) => {
     let conn;
     try {
@@ -32,7 +36,6 @@ router.get('/', checkPermission('VIEW_QUOTATIONS'), async (req, res) => {
                 ORDER BY q.created_at DESC
             `);
         } else {
-            // Dealers can only see their own quotations
             rows = await conn.query(`
                 SELECT q.quotation_id, q.user_id, q.customer_name,
                        q.grand_total, q.status, q.decline_reason, q.created_at
@@ -42,7 +45,7 @@ router.get('/', checkPermission('VIEW_QUOTATIONS'), async (req, res) => {
             `, [user_id || req.user.user_id]);
         }
 
-        res.json(rows);
+        res.json(serialize(rows));
     } catch (err) {
         console.error('[quotations] GET / error:', err.message);
         res.status(500).json({ success: false, error: err.message });
@@ -70,7 +73,7 @@ router.get('/:id', checkPermission('VIEW_QUOTATIONS'), async (req, res) => {
             ORDER BY id
         `, [req.params.id]);
 
-        res.json({ ...quotation, items });
+        res.json(serialize({ ...quotation, items }));
     } catch (err) {
         console.error('[quotations] GET /:id error:', err.message);
         res.status(500).json({ success: false, error: err.message });
@@ -78,7 +81,6 @@ router.get('/:id', checkPermission('VIEW_QUOTATIONS'), async (req, res) => {
 });
 
 // ── POST /api/quotations ──────────────────────────────────────────────────────
-// Body: { user_id, customer_name, grand_total, items: [{product_id, product_name, quantity, unit_price, line_total}] }
 router.post('/', checkPermission('CREATE_QUOTATION'), async (req, res) => {
     const { user_id, customer_name, grand_total, items = [] } = req.body;
 
@@ -122,7 +124,6 @@ router.post('/', checkPermission('CREATE_QUOTATION'), async (req, res) => {
 });
 
 // ── PATCH /api/quotations/:id/status ─────────────────────────────────────────
-// Body: { status, decline_reason? }
 router.patch('/:id/status', checkPermission('MANAGE_QUOTATION_STATUS'), async (req, res) => {
     const { status, decline_reason = '' } = req.body;
     const VALID = ['pending', 'accepted', 'declined'];

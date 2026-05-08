@@ -4,6 +4,32 @@ import { checkPermission } from '../middleware/checkPermission.js';
 
 const router = express.Router();
 
+// MariaDB BigInt → Number serializer
+const serialize = (data) =>
+    JSON.parse(JSON.stringify(data, (_, v) =>
+        typeof v === 'bigint' ? Number(v) : v
+    ));
+
+// GET /api/suppliers/full
+// Frontend (SupplierManager.jsx) calls this endpoint.
+// Aliases DB column `specialization` → `product_specialization` to match frontend state key.
+router.get('/full', async (req, res) => {
+    let conn;
+    try {
+        conn = await pool.getConnection();
+        const rows = await conn.query(
+            `SELECT supplier_id, supplier_name, factory_name,
+                    specialization AS product_specialization,
+                    price_range, quality_rating,
+                    delay_frequency, trend_alignment,
+                    popular_categories, return_issues
+             FROM suppliers ORDER BY supplier_name`
+        );
+        res.json(serialize(rows));
+    } catch (err) { res.status(500).json({ error: err.message }); }
+    finally { if (conn) conn.release(); }
+});
+
 // GET /api/suppliers
 router.get('/', async (req, res) => {
     let conn;
@@ -16,21 +42,25 @@ router.get('/', async (req, res) => {
                     popular_categories, return_issues
              FROM suppliers ORDER BY supplier_name`
         );
-        res.json(rows);
+        res.json(serialize(rows));
     } catch (err) { res.status(500).json({ error: err.message }); }
     finally { if (conn) conn.release(); }
 });
 
 // POST /api/suppliers
+// Accepts both `specialization` and `product_specialization` (frontend sends the latter)
 router.post('/', checkPermission('MANAGE_SUPPLIERS'), async (req, res) => {
     const {
-        supplier_name, factory_name, specialization,
+        supplier_name, factory_name,
+        specialization, product_specialization,
         price_range, quality_rating, delay_frequency,
         trend_alignment, popular_categories, return_issues
     } = req.body;
 
     if (!supplier_name?.trim())
         return res.status(400).json({ error: 'supplier_name is required' });
+
+    const spec = (specialization || product_specialization || '').trim() || null;
 
     let conn;
     try {
@@ -44,7 +74,7 @@ router.post('/', checkPermission('MANAGE_SUPPLIERS'), async (req, res) => {
             [
                 supplier_name.trim(),
                 factory_name?.trim()       || null,
-                specialization?.trim()     || null,
+                spec,
                 price_range?.trim()        || null,
                 quality_rating != null ? Number(quality_rating) : null,
                 delay_frequency?.trim()    || null,
@@ -64,13 +94,16 @@ router.post('/', checkPermission('MANAGE_SUPPLIERS'), async (req, res) => {
 // PUT /api/suppliers/:id
 router.put('/:id', checkPermission('MANAGE_SUPPLIERS'), async (req, res) => {
     const {
-        supplier_name, factory_name, specialization,
+        supplier_name, factory_name,
+        specialization, product_specialization,
         price_range, quality_rating, delay_frequency,
         trend_alignment, popular_categories, return_issues
     } = req.body;
 
     if (!supplier_name?.trim())
         return res.status(400).json({ error: 'supplier_name is required' });
+
+    const spec = (specialization || product_specialization || '').trim() || null;
 
     let conn;
     try {
@@ -84,7 +117,7 @@ router.put('/:id', checkPermission('MANAGE_SUPPLIERS'), async (req, res) => {
             [
                 supplier_name.trim(),
                 factory_name?.trim()       || null,
-                specialization?.trim()     || null,
+                spec,
                 price_range?.trim()        || null,
                 quality_rating != null ? Number(quality_rating) : null,
                 delay_frequency?.trim()    || null,
@@ -97,6 +130,21 @@ router.put('/:id', checkPermission('MANAGE_SUPPLIERS'), async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         console.error('[suppliers] PUT error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+    finally { if (conn) conn.release(); }
+});
+
+// DELETE /api/suppliers/:id
+router.delete('/:id', checkPermission('MANAGE_SUPPLIERS'), async (req, res) => {
+    let conn;
+    try {
+        conn = await pool.getConnection();
+        await conn.query('DELETE FROM suppliers WHERE supplier_id = ?', [req.params.id]);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[suppliers] DELETE error:', err.message);
+        // Surface foreign-key violations clearly so the frontend can show a helpful message
         res.status(500).json({ error: err.message });
     }
     finally { if (conn) conn.release(); }

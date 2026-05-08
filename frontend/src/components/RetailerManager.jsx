@@ -1,19 +1,40 @@
 import { useCallback, useEffect, useState } from 'react'
 import API from '../api'
 
-const PAYMENT_OPTIONS  = ['cash', 'credit', 'mixed', 'unknown']
+// These values must match the DB ENUM for payment_pattern exactly.
+// The actual ENUM values visible in the existing data rows are:
+//   on_delivery, credit_good, credit_slow
+// plus the additional values seen in other parts of the app:
+//   partial_advance, cash_advance
+const PAYMENT_OPTIONS = [
+    'on_delivery',
+    'credit_good',
+    'credit_slow',
+    'partial_advance',
+    'cash_advance',
+]
+
+// Human-readable labels for each ENUM value shown in the table badges
+const PAYMENT_LABELS = {
+    on_delivery:     'on_delivery',
+    credit_good:     'credit_good',
+    credit_slow:     'credit_slow',
+    partial_advance: 'partial_advance',
+    cash_advance:    'cash_advance',
+}
+
 const SEGMENT_OPTIONS  = ['budget', 'mid', 'premium']
 
 const emptyForm = {
     shop_name: '', contact_person: '', phone: '',
-    market_location: '', payment_pattern: 'cash',
+    market_location: '', payment_pattern: 'on_delivery',
     preferred_categories: '', preferred_price_segment: 'mid'
 }
 
 export default function RetailerManager({ user }) {
     const [retailers, setRetailers] = useState([])
     const [form, setForm]           = useState(emptyForm)
-    const [editing, setEditing]     = useState(null)   // retailer_id being edited
+    const [editing, setEditing]     = useState(null)
     const [error, setError]         = useState('')
     const [success, setSuccess]     = useState('')
     const [loading, setLoading]     = useState(false)
@@ -40,12 +61,14 @@ export default function RetailerManager({ user }) {
     const startEdit = r => {
         setEditing(r.retailer_id)
         setForm({
-            shop_name: r.shop_name || '',
-            contact_person: r.contact_person || '',
-            phone: r.phone || '',
-            market_location: r.market_location || '',
-            payment_pattern: r.payment_pattern || 'cash',
-            preferred_categories: r.preferred_categories || '',
+            shop_name:               r.shop_name || '',
+            contact_person:          r.contact_person || '',
+            phone:                   r.phone || '',
+            market_location:         r.market_location || '',
+            payment_pattern:         PAYMENT_OPTIONS.includes(r.payment_pattern)
+                                         ? r.payment_pattern
+                                         : 'on_delivery',
+            preferred_categories:    r.preferred_categories || '',
             preferred_price_segment: r.preferred_price_segment || 'mid'
         })
         setError('')
@@ -81,11 +104,22 @@ export default function RetailerManager({ user }) {
             <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{label}</span>
             {options
                 ? <select name={name} value={form[name]} onChange={handleChange} className="input" style={{ minWidth: 140 }}>
-                    {options.map(o => <option key={o} value={o}>{o}</option>)}
+                    {options.map(o => <option key={o} value={o}>{PAYMENT_LABELS[o] || o}</option>)}
                   </select>
                 : <input name={name} type={type} value={form[name]} onChange={handleChange} className="input" />}
         </label>
     )
+
+    const paymentBadgeStyle = (pattern) => {
+        const map = {
+            on_delivery:     { bg: '#dcfce7', color: '#166534' },
+            credit_good:     { bg: '#fef9c3', color: '#854d0e' },
+            credit_slow:     { bg: '#fee2e2', color: '#991b1b' },
+            partial_advance: { bg: '#e0f2fe', color: '#075985' },
+            cash_advance:    { bg: '#f3e8ff', color: '#6b21a8' },
+        }
+        return map[pattern] || { bg: '#f3f4f6', color: '#374151' }
+    }
 
     return (
         <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 1rem 2rem' }}>
@@ -132,27 +166,30 @@ export default function RetailerManager({ user }) {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {retailers.map(r => (
-                                        <tr key={r.retailer_id} style={{ borderBottom: '1px solid var(--color-border)' }}>
-                                            <td style={{ padding: '7px 10px', fontWeight: 600 }}>{r.shop_name}</td>
-                                            <td style={{ padding: '7px 10px' }}>{r.contact_person || '-'}</td>
-                                            <td style={{ padding: '7px 10px' }}>{r.phone || '-'}</td>
-                                            <td style={{ padding: '7px 10px' }}>{r.market_location || '-'}</td>
-                                            <td style={{ padding: '7px 10px' }}>
-                                                <span style={{ background: r.payment_pattern === 'cash' ? '#dcfce7' : r.payment_pattern === 'credit' ? '#fef9c3' : '#f3f4f6', color: '#374151', borderRadius: 10, padding: '2px 8px', fontSize: 12, fontWeight: 600 }}>
-                                                    {r.payment_pattern}
-                                                </span>
-                                            </td>
-                                            <td style={{ padding: '7px 10px' }}>{r.preferred_categories || '-'}</td>
-                                            <td style={{ padding: '7px 10px' }}>{r.preferred_price_segment || '-'}</td>
-                                            <td style={{ padding: '7px 10px', color: Number(r.outstanding_balance) > 0 ? 'var(--color-error)' : 'inherit', fontWeight: Number(r.outstanding_balance) > 0 ? 700 : 400 }}>
-                                                NPR {Number(r.outstanding_balance || 0).toLocaleString('en-IN')}
-                                            </td>
-                                            <td style={{ padding: '7px 10px' }}>
-                                                <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => startEdit(r)}>Edit</button>
-                                            </td>
-                                        </tr>
-                                    ))}
+                                    {retailers.map(r => {
+                                        const badge = paymentBadgeStyle(r.payment_pattern)
+                                        return (
+                                            <tr key={r.retailer_id} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                                                <td style={{ padding: '7px 10px', fontWeight: 600 }}>{r.shop_name}</td>
+                                                <td style={{ padding: '7px 10px' }}>{r.contact_person || '-'}</td>
+                                                <td style={{ padding: '7px 10px' }}>{r.phone || '-'}</td>
+                                                <td style={{ padding: '7px 10px' }}>{r.market_location || '-'}</td>
+                                                <td style={{ padding: '7px 10px' }}>
+                                                    <span style={{ background: badge.bg, color: badge.color, borderRadius: 10, padding: '2px 8px', fontSize: 12, fontWeight: 600 }}>
+                                                        {r.payment_pattern}
+                                                    </span>
+                                                </td>
+                                                <td style={{ padding: '7px 10px' }}>{r.preferred_categories || '-'}</td>
+                                                <td style={{ padding: '7px 10px' }}>{r.preferred_price_segment || '-'}</td>
+                                                <td style={{ padding: '7px 10px', color: Number(r.outstanding_balance) > 0 ? 'var(--color-error)' : 'inherit', fontWeight: Number(r.outstanding_balance) > 0 ? 700 : 400 }}>
+                                                    NPR {Number(r.outstanding_balance || 0).toLocaleString('en-IN')}
+                                                </td>
+                                                <td style={{ padding: '7px 10px' }}>
+                                                    <button className="btn btn-secondary" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => startEdit(r)}>Edit</button>
+                                                </td>
+                                            </tr>
+                                        )
+                                    })}
                                 </tbody>
                             </table>
                           </div>
