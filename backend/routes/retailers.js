@@ -4,7 +4,14 @@ import { checkPermission } from '../middleware/checkPermission.js';
 
 const router = express.Router();
 
-// GET /api/retailers  — no auth needed for listing (dealers need to look up customers)
+// Allowed ENUM values for payment_pattern — must match DB schema exactly
+const PAYMENT_PATTERNS = ['cash', 'credit_good', 'credit_slow', 'on_delivery', 'mixed'];
+const PRICE_SEGMENTS   = ['budget', 'mid', 'premium', 'mixed'];
+
+const sanitizePayment = (v) => PAYMENT_PATTERNS.includes(v) ? v : 'on_delivery';
+const sanitizeSegment = (v) => PRICE_SEGMENTS.includes(v)   ? v : 'mixed';
+
+// GET /api/retailers
 router.get('/', async (req, res) => {
     let conn;
     try {
@@ -20,7 +27,7 @@ router.get('/', async (req, res) => {
     finally { if (conn) conn.release(); }
 });
 
-// POST /api/retailers — dealers + admin can register a retailer/customer
+// POST /api/retailers
 router.post('/', checkPermission('CREATE_RETAILER'), async (req, res) => {
     const {
         shop_name, contact_person, phone, market_location,
@@ -39,20 +46,23 @@ router.post('/', checkPermission('CREATE_RETAILER'), async (req, res) => {
             [
                 shop_name.trim(),
                 contact_person?.trim() || null,
-                phone?.trim() || null,
-                market_location?.trim() || null,
-                payment_pattern || 'on_delivery',
+                phone?.trim()          || null,
+                market_location?.trim()|| null,
+                sanitizePayment(payment_pattern),
                 preferred_categories?.trim() || null,
-                preferred_price_segment || 'mixed',
+                sanitizeSegment(preferred_price_segment),
                 notes?.trim() || null
             ]
         );
         res.status(201).json({ success: true, retailer_id: Number(result.insertId) });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) {
+        console.error('[retailers] POST error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
     finally { if (conn) conn.release(); }
 });
 
-// PUT /api/retailers/:id — admin only can edit retailer details
+// PUT /api/retailers/:id
 router.put('/:id', checkPermission('UPDATE_RETAILER'), async (req, res) => {
     const {
         shop_name, contact_person, phone, market_location,
@@ -71,19 +81,22 @@ router.put('/:id', checkPermission('UPDATE_RETAILER'), async (req, res) => {
              WHERE retailer_id=?`,
             [
                 shop_name.trim(),
-                contact_person?.trim() || null,
-                phone?.trim() || null,
+                contact_person?.trim()  || null,
+                phone?.trim()           || null,
                 market_location?.trim() || null,
-                payment_pattern || 'on_delivery',
+                sanitizePayment(payment_pattern),
                 preferred_categories?.trim() || null,
-                preferred_price_segment || 'mixed',
+                sanitizeSegment(preferred_price_segment),
                 Number(outstanding_balance || 0),
                 notes?.trim() || null,
                 req.params.id
             ]
         );
         res.json({ success: true });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) {
+        console.error('[retailers] PUT error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
     finally { if (conn) conn.release(); }
 });
 
