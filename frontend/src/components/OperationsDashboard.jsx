@@ -13,16 +13,19 @@ function idlePillClass(days, speed) {
 const speedLabel = { new: 'New', slow: 'Slow', medium: 'Mid', fast: 'Fast', dead: 'Dead' }
 
 export default function OperationsDashboard({ user }) {
-    const [dashboard,      setDashboard]      = useState(null)
-    const [inventory,      setInventory]      = useState([])
-    const [topRetailers,   setTopRetailers]   = useState([])
-    const [marginSupplier, setMarginSupplier] = useState([])
-    const [query,          setQuery]          = useState('')
-    const [maxPrice,       setMaxPrice]       = useState('')
-    const [loading,        setLoading]        = useState(true)
-    const [searching,      setSearching]      = useState(false)
-    const [searchDone,     setSearchDone]     = useState(false)
-    const [toast,          setToast]          = useState(null)
+    const [dashboard,       setDashboard]       = useState(null)
+    const [inventory,       setInventory]       = useState([])
+    const [topRetailers,    setTopRetailers]    = useState([])
+    const [marginSupplier,  setMarginSupplier]  = useState([])
+    const [marginRetailer,  setMarginRetailer]  = useState([])
+    const [balePerf,        setBalePerf]        = useState({ best: [], worst: [] })
+    const [baleMode,        setBaleMode]        = useState('best')
+    const [query,           setQuery]           = useState('')
+    const [maxPrice,        setMaxPrice]        = useState('')
+    const [loading,         setLoading]         = useState(true)
+    const [searching,       setSearching]       = useState(false)
+    const [searchDone,      setSearchDone]      = useState(false)
+    const [toast,           setToast]           = useState(null)
 
     const authHeader = useCallback(
         () => ({ 'x-user-id': String(user.user_id), 'x-user-role': user.role }),
@@ -37,14 +40,22 @@ export default function OperationsDashboard({ user }) {
     const loadDashboard = useCallback(async () => {
         setLoading(true)
         try {
-            const [dashRes, retailersRes, marginsRes] = await Promise.all([
-                API.get('/operations/dashboard',           { headers: authHeader() }),
-                API.get('/analytics/top-retailers',        { headers: authHeader() }),
-                API.get('/analytics/margin-per-supplier',  { headers: authHeader() }),
+            const [dashRes, retailersRes, marginsRes, marginRetRes, baleBestRes, baleWorstRes] = await Promise.all([
+                API.get('/operations/dashboard',          { headers: authHeader() }),
+                API.get('/analytics/top-retailers',       { headers: authHeader() }),
+                API.get('/analytics/margin-per-supplier', { headers: authHeader() }),
+                API.get('/analytics/margin-per-retailer', { headers: authHeader() }),
+                API.get('/analytics/bale-performance',    { headers: authHeader(), params: { mode: 'best',  limit: 5 } }),
+                API.get('/analytics/bale-performance',    { headers: authHeader(), params: { mode: 'worst', limit: 5 } }),
             ])
             setDashboard(dashRes.data)
-            setTopRetailers(Array.isArray(retailersRes.data)  ? retailersRes.data  : [])
-            setMarginSupplier(Array.isArray(marginsRes.data)  ? marginsRes.data    : [])
+            setTopRetailers(Array.isArray(retailersRes.data)   ? retailersRes.data   : [])
+            setMarginSupplier(Array.isArray(marginsRes.data)   ? marginsRes.data     : [])
+            setMarginRetailer(Array.isArray(marginRetRes.data) ? marginRetRes.data   : [])
+            setBalePerf({
+                best:  Array.isArray(baleBestRes.data?.rows)  ? baleBestRes.data.rows  : [],
+                worst: Array.isArray(baleWorstRes.data?.rows) ? baleWorstRes.data.rows : [],
+            })
         } catch (err) {
             showToast(err?.response?.data?.error || err.message || 'Could not load dashboard', 'error')
         } finally {
@@ -80,6 +91,8 @@ export default function OperationsDashboard({ user }) {
     const riskClass = riskRatio >= 20 ? 'risk-high' : riskRatio >= 10 ? 'risk-mid' : 'risk-low'
 
     if (loading) return <div className="loading">Loading operations dashboard…</div>
+
+    const baleRows = baleMode === 'best' ? balePerf.best : balePerf.worst
 
     return (
         <div className="ops-page">
@@ -230,13 +243,8 @@ export default function OperationsDashboard({ user }) {
                         <table>
                             <thead>
                                 <tr>
-                                    <th>#</th>
-                                    <th>Shop</th>
-                                    <th>Location</th>
-                                    <th>Orders</th>
-                                    <th>Revenue</th>
-                                    <th>Margin %</th>
-                                    <th>Balance</th>
+                                    <th>#</th><th>Shop</th><th>Location</th>
+                                    <th>Orders</th><th>Revenue</th><th>Margin %</th><th>Balance</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -246,16 +254,14 @@ export default function OperationsDashboard({ user }) {
                                         <td>
                                             {row.shop_name}
                                             {row.preferred_categories && (
-                                                <><br /><small style={{ color: 'var(--color-text-muted, #888)' }}>{row.preferred_categories}</small></>
+                                                <><br /><small style={{ color: 'var(--color-text-muted,#888)' }}>{row.preferred_categories}</small></>
                                             )}
                                         </td>
                                         <td>{row.market_location || '—'}</td>
                                         <td>{Number(row.order_count || 0)}</td>
                                         <td className="price-accent">{money(row.revenue)}</td>
                                         <td>
-                                            <span className={`mini-pill ${
-                                                Number(row.margin_pct) >= 20 ? '' : 'warning'
-                                            }`}>
+                                            <span className={`mini-pill ${Number(row.margin_pct) >= 20 ? '' : 'warning'}`}>
                                                 {row.margin_pct != null ? `${row.margin_pct}%` : '—'}
                                             </span>
                                         </td>
@@ -276,12 +282,8 @@ export default function OperationsDashboard({ user }) {
                         <table>
                             <thead>
                                 <tr>
-                                    <th>Supplier</th>
-                                    <th>Quality</th>
-                                    <th>Delay</th>
-                                    <th>Margin/m</th>
-                                    <th>Total Margin</th>
-                                    <th>Capital Eff.</th>
+                                    <th>Supplier</th><th>Quality</th><th>Delay</th>
+                                    <th>Margin/m</th><th>Total Margin</th><th>Capital Eff.</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -290,7 +292,7 @@ export default function OperationsDashboard({ user }) {
                                         <td>
                                             {row.supplier_name}
                                             {row.trend_alignment && (
-                                                <><br /><small style={{ color: 'var(--color-text-muted, #888)' }}>{row.trend_alignment}</small></>
+                                                <><br /><small style={{ color: 'var(--color-text-muted,#888)' }}>{row.trend_alignment}</small></>
                                             )}
                                         </td>
                                         <td>{Number(row.quality_rating || 0).toFixed(1)}/5</td>
@@ -300,9 +302,7 @@ export default function OperationsDashboard({ user }) {
                                         </td>
                                         <td className="price-accent">{money(row.realized_margin)}</td>
                                         <td>
-                                            <span className={`mini-pill ${
-                                                Number(row.capital_efficiency_pct) >= 30 ? '' : 'warning'
-                                            }`}>
+                                            <span className={`mini-pill ${Number(row.capital_efficiency_pct) >= 30 ? '' : 'warning'}`}>
                                                 {row.capital_efficiency_pct != null ? `${row.capital_efficiency_pct}%` : '—'}
                                             </span>
                                         </td>
@@ -314,6 +314,120 @@ export default function OperationsDashboard({ user }) {
                         <p className="empty-state">No supplier data yet. Add bales from suppliers to see margins.</p>
                     )}
                 </Panel>
+            </section>
+
+            {/* ── MARGIN PER RETAILER ───────────────────────────────────────── */}
+            <section className="card compact-panel">
+                <h2>Margin per Retailer</h2>
+                {marginRetailer.length ? (
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>#</th><th>Shop</th><th>Location</th><th>Orders</th>
+                                <th>Revenue</th><th>Total Margin</th><th>Margin %</th>
+                                <th>Avg/Order</th><th>Payment</th><th>Balance</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {marginRetailer.map((row, i) => (
+                                <tr key={row.retailer_id}>
+                                    <td className="price-accent">#{i + 1}</td>
+                                    <td>
+                                        {row.shop_name}
+                                        {row.preferred_categories && (
+                                            <><br /><small style={{ color: 'var(--color-text-muted,#888)' }}>{row.preferred_categories}</small></>
+                                        )}
+                                    </td>
+                                    <td>{row.market_location || '—'}</td>
+                                    <td>{Number(row.order_count || 0)}</td>
+                                    <td>{money(row.revenue)}</td>
+                                    <td className="price-accent">{money(row.total_margin)}</td>
+                                    <td>
+                                        <span className={`mini-pill ${
+                                            Number(row.margin_pct) >= 25 ? '' :
+                                            Number(row.margin_pct) >= 15 ? 'warning' : 'danger'
+                                        }`}>
+                                            {row.margin_pct != null ? `${row.margin_pct}%` : '—'}
+                                        </span>
+                                    </td>
+                                    <td className="price-accent">{money(row.avg_margin_per_order)}</td>
+                                    <td><span className="mini-pill">{row.payment_pattern || '—'}</span></td>
+                                    <td className={Number(row.outstanding_balance) > 0 ? 'risk-text' : ''}>
+                                        {money(row.outstanding_balance)}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                ) : (
+                    <p className="empty-state">No retailer margin data yet. Record sales to populate this table.</p>
+                )}
+            </section>
+
+            {/* ── BALE PERFORMANCE ─────────────────────────────────────────── */}
+            <section className="card compact-panel">
+                <div className="section-heading inline" style={{ marginBottom: '1rem' }}>
+                    <h2>Bale Performance</h2>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                            className={`btn ${baleMode === 'best' ? 'btn-primary' : 'btn-outline'}`}
+                            onClick={() => setBaleMode('best')}
+                        >
+                            🏆 Best
+                        </button>
+                        <button
+                            className={`btn ${baleMode === 'worst' ? 'btn-primary' : 'btn-outline'}`}
+                            onClick={() => setBaleMode('worst')}
+                        >
+                            ⚠ Worst
+                        </button>
+                    </div>
+                </div>
+                {baleRows.length ? (
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Bale</th><th>Supplier</th><th>Thans</th>
+                                <th>Meters Sold</th><th>Remaining</th>
+                                <th>Revenue</th><th>Total Margin</th>
+                                <th>Margin %</th><th>Sell-Through</th><th>Days Old</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {baleRows.map(row => (
+                                <tr key={row.bale_id}>
+                                    <td>{row.bale_code}</td>
+                                    <td>{row.supplier_name || '—'}</td>
+                                    <td>{Number(row.than_count || 0)}</td>
+                                    <td>{meters(row.meters_sold)}</td>
+                                    <td>{meters(row.meters_remaining)}</td>
+                                    <td>{money(row.revenue)}</td>
+                                    <td className="price-accent">{money(row.total_margin)}</td>
+                                    <td>
+                                        <span className={`mini-pill ${
+                                            Number(row.margin_pct) >= 25 ? '' :
+                                            Number(row.margin_pct) >= 12 ? 'warning' : 'danger'
+                                        }`}>
+                                            {row.margin_pct != null ? `${row.margin_pct}%` : '—'}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span className={`mini-pill ${Number(row.sell_through_pct) >= 70 ? '' : 'warning'}`}>
+                                            {row.sell_through_pct != null ? `${row.sell_through_pct}%` : '—'}
+                                        </span>
+                                    </td>
+                                    <td>{row.days_since_arrival != null ? `${row.days_since_arrival}d` : '—'}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                ) : (
+                    <p className="empty-state">
+                        {baleMode === 'best'
+                            ? 'No bale sales data yet. Record sales to see top performers.'
+                            : 'No underperforming bales found.'}
+                    </p>
+                )}
             </section>
 
             {/* ── Inventory Search ─────────────────────────────────────────── */}

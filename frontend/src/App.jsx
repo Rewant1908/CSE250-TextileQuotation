@@ -11,6 +11,7 @@ import SupplierManager      from './components/SupplierManager'
 import LoginPage            from './components/LoginPage'
 import DeadStockAnalytics   from './components/DeadStockAnalytics'
 import AgentChat            from './components/AgentChat'
+import WarehouseIntelligence from './components/WarehouseIntelligence'
 import './App.css'
 
 const USER_TABS  = ['Register Dealer', 'Create Quotation', 'My Quotations']
@@ -24,6 +25,7 @@ const ADMIN_TABS = [
     'Quotation Requests',
     'Manage Products',
     'AI Agents',
+    'Warehouse AI',
 ]
 
 const STORAGE_KEY = 'kt_impex_user'
@@ -123,15 +125,16 @@ function App() {
                 <TabErrorBoundary tabKey={activeTab}>
                     {isAdmin ? (
                         <>
-                            {activeTab === 0 && <OperationsDashboard  user={user} />}
-                            {activeTab === 1 && <DeadStockAnalytics   user={user} />}
-                            {activeTab === 2 && <SaleRecorder         user={user} />}
-                            {activeTab === 3 && <RetailerManager      user={user} />}
-                            {activeTab === 4 && <SupplierManager      user={user} />}
-                            {activeTab === 5 && <BaleManager          user={user} />}
-                            {activeTab === 6 && <QuotationHistory     user={user} />}
-                            {activeTab === 7 && <AdminProductManager  user={user} />}
-                            {activeTab === 8 && <AgentChat            user={user} />}
+                            {activeTab === 0 && <OperationsDashboard   user={user} />}
+                            {activeTab === 1 && <DeadStockAnalytics    user={user} />}
+                            {activeTab === 2 && <SaleRecorder          user={user} />}
+                            {activeTab === 3 && <RetailerManager       user={user} />}
+                            {activeTab === 4 && <SupplierManager       user={user} />}
+                            {activeTab === 5 && <BaleManager           user={user} />}
+                            {activeTab === 6 && <QuotationHistory      user={user} />}
+                            {activeTab === 7 && <AdminProductManager   user={user} />}
+                            {activeTab === 8 && <AgentChat             user={user} />}
+                            {activeTab === 9 && <WarehouseIntelligence user={user} />}
                         </>
                     ) : (
                         <>
