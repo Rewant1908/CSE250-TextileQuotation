@@ -2,6 +2,15 @@
 // Phase 4 fix: added rate limiting (express-rate-limit) and structured logging (pino).
 // All console.log / console.error replaced with logger calls.
 
+// ── Load env vars FIRST — before any other module reads process.env ────────────
+import { config } from 'dotenv';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = dirname(__filename);
+config({ path: join(__dirname, '.env'), override: true });
+// ──────────────────────────────────────────────────────────────────────────────
+
 import express        from 'express';
 import cors           from 'cors';
 import rateLimit      from 'express-rate-limit';
@@ -59,12 +68,7 @@ app.use(cors({
 
 app.use(express.json());
 
-// ─── RATE LIMITING (Issue 3) ───────────────────────────────────────────────────
-// Global limiter: 200 requests per minute per IP.
-// Agent limiter:  20  requests per minute per IP (Gemini API cost protection).
-// Auth limiter:   10  requests per minute per IP (brute-force protection).
-//
-// All limits are configurable via env vars so Railway can tune without deploys.
+// ─── RATE LIMITING ─────────────────────────────────────────────────────────────
 const globalLimiter = rateLimit({
     windowMs:    60 * 1000,
     max:         parseInt(process.env.RATE_LIMIT_GLOBAL  || '200', 10),
@@ -79,7 +83,7 @@ const agentLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders:   false,
     message: { error: 'Agent rate limit reached — wait 60 seconds before retrying.' },
-    skip: (req) => req.user?.role === 'admin', // admins bypass agent limit
+    skip: (req) => req.user?.role === 'admin',
 });
 
 const authLimiter = rateLimit({
@@ -90,19 +94,18 @@ const authLimiter = rateLimit({
     message: { error: 'Too many login attempts — please wait 60 seconds.' },
 });
 
-// Apply global limiter to all routes
 app.use(globalLimiter);
 
 // ─── MOUNT ROUTES ─────────────────────────────────────────────────────────────
-app.use('/api',              authLimiter, authRoutes);    // POST /api/signup, /api/login, /api/forgot-password
+app.use('/api',              authLimiter, authRoutes);
 app.use('/api/products',     productRoutes);
 app.use('/api/suppliers',    supplierRoutes);
 app.use('/api/bales',        baleRoutes);
 app.use('/api/operations',   operationsRoutes);
-app.use('/api',              operationsRoutes);           // /api/thans, /api/inventory/search, /api/admin/*
+app.use('/api',              operationsRoutes);
 app.use('/api/retailers',    retailerRoutes);
 app.use('/api/transactions',  salesRoutes);
-app.use('/api/agents',       agentLimiter, agentRoutes); // strict limit — each call hits Gemini
+app.use('/api/agents',       agentLimiter, agentRoutes);
 app.use('/api/analytics',    analyticsRoutes);
 app.use('/api/quotations',   quotationRoutes);
 
