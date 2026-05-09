@@ -17,14 +17,21 @@
 //   - readMemory()          checks Redis (TTL: 5 min) before hitting disk
 //   - writeMemorySnapshot() writes disk then busts the Redis key immediately
 //   - appendMemory()        appends a timestamped entry, then busts cache
+//
+// Phase 4 fix: import.meta.dirname replaced with fileURLToPath polyfill
+// (Node 20.11+ only — now compatible with Node 18+)
 
 import { readFile, writeFile, mkdir, readdir } from 'fs/promises'
 import { resolve, dirname }                    from 'path'
+import { fileURLToPath }                       from 'url'
 import { existsSync }                          from 'fs'
 import * as cache                              from '../../cache.js'
 
-const MEMORY_ROOT = resolve(import.meta.dirname, '../../memory')
-const MEMORY_TTL  = 300 // 5 minutes
+// Phase 4 fix: was import.meta.dirname (Node 20.11+ only)
+const __filename   = fileURLToPath(import.meta.url)
+const __dirname_am = dirname(__filename)
+const MEMORY_ROOT  = resolve(__dirname_am, '../../memory')
+const MEMORY_TTL   = 300 // 5 minutes
 
 function memoryPath(scope, agentName, username = 'system') {
     switch (scope) {
@@ -86,9 +93,9 @@ export async function writeMemorySnapshot(scope, agentName, username = 'system',
  * Creates the file if it doesn't exist.
  */
 export async function appendMemory(scope, agentName, username = 'system', newEntry) {
-    const existing = await readMemory(scope, agentName, username)
+    const existing  = await readMemory(scope, agentName, username)
     const timestamp = new Date().toISOString().split('T')[0]
-    const appended = existing
+    const appended  = existing
         ? `${existing.trimEnd()}\n\n<!-- appended ${timestamp} -->\n${newEntry}`
         : `<!-- appended ${timestamp} -->\n${newEntry}`
     await writeMemorySnapshot(scope, agentName, username, appended)
@@ -117,16 +124,15 @@ export async function listMemoryFiles(scope = 'project', username = 'system') {
 
     try {
         const entries = await readdir(dir, { withFileTypes: true })
-        const files = entries
+        const files   = entries
             .filter(e => e.isFile() && e.name.endsWith('.MEMORY.md'))
             .map(e => ({
                 agentName: e.name.replace('.MEMORY.md', ''),
                 scope,
-                path: resolve(dir, e.name),
-                sizeBytes: 0, // filled below
+                path:      resolve(dir, e.name),
+                sizeBytes: 0,
             }))
 
-        // Get sizes
         await Promise.all(files.map(async f => {
             try {
                 const content = await readFile(f.path, 'utf-8')
