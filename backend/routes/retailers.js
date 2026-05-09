@@ -20,7 +20,7 @@ const SOFT_DELETE_FILTER = `(r.is_deleted = 0 OR r.is_deleted IS NULL)`;
 const SOFT_DELETE_FILTER_NO_ALIAS = `(is_deleted = 0 OR is_deleted IS NULL)`;
 
 // ── GET /api/retailers ─────────────────────────────────────────────────────────
-router.get('/', checkPermission('VIEW_OPERATIONS'), async (req, res) => {
+router.get('/', checkPermission('VIEW_RETAILERS'), async (req, res) => {
     let conn;
     try {
         conn = await pool.getConnection();
@@ -58,7 +58,7 @@ router.get('/', checkPermission('VIEW_OPERATIONS'), async (req, res) => {
 });
 
 // ── GET /api/retailers/:id ────────────────────────────────────────────────
-router.get('/:id', checkPermission('VIEW_OPERATIONS'), async (req, res) => {
+router.get('/:id', checkPermission('VIEW_RETAILERS'), async (req, res) => {
     let conn;
     try {
         conn = await pool.getConnection();
@@ -82,7 +82,7 @@ router.get('/:id', checkPermission('VIEW_OPERATIONS'), async (req, res) => {
 });
 
 // ── POST /api/retailers ─────────────────────────────────────────────────────
-router.post('/', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
+router.post('/', checkPermission('CREATE_RETAILER'), async (req, res) => {
     const {
         shop_name, owner_name, contact_phone, market_location, city,
         payment_pattern, preferred_categories, preferred_price_segment,
@@ -117,7 +117,7 @@ router.post('/', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
 });
 
 // ── PUT /api/retailers/:id ────────────────────────────────────────────────────
-router.put('/:id', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
+router.put('/:id', checkPermission('UPDATE_RETAILER'), async (req, res) => {
     const {
         shop_name, owner_name, contact_phone, market_location, city,
         payment_pattern, preferred_categories, preferred_price_segment,
@@ -158,7 +158,7 @@ router.put('/:id', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
 });
 
 // ── DELETE /api/retailers/:id — SOFT DELETE ────────────────────────────────────
-router.delete('/:id', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
+router.delete('/:id', checkPermission('DELETE_RETAILER'), async (req, res) => {
     let conn;
     try {
         conn = await pool.getConnection();
