@@ -23,8 +23,6 @@ export default function QuotationHistory({ user }) {
         setTimeout(() => setToast(null), 3500)
     }
 
-    // Bug 1 fix: was fetch(`${API}/api/quotations?user_id=...`) — [object Object]/api/...
-    // All fetch() calls migrated to API.get() / API.patch() from the axios instance.
     const load = useCallback(() => {
         setLoading(true)
         API.get('/quotations', { params: { user_id: user.user_id } })
@@ -38,7 +36,6 @@ export default function QuotationHistory({ user }) {
     const viewDetail = async (id) => {
         if (selected === id) { setSelected(null); setDetail(null); return }
         try {
-            // Bug 1 fix: was fetch(`${API}/api/quotations/${id}`)
             const res = await API.get(`/quotations/${id}`)
             setDetail(res.data)
             setSelected(id)
@@ -49,9 +46,6 @@ export default function QuotationHistory({ user }) {
 
     const updateStatus = async (id, status, decline_reason = '') => {
         try {
-            // Bug 1 fix: was fetch(`${API}/api/quotations/${id}/status`, { method: 'PATCH', ... })
-            // Bug 3 fix: backend PATCH endpoint now has checkPermission('MANAGE_QUOTATION_STATUS');
-            //            we send x-user-id so the middleware can verify the role.
             await API.patch(`/quotations/${id}/status`,
                 { status, decline_reason },
                 { headers: { 'x-user-id': String(user.user_id) } }
@@ -82,8 +76,9 @@ export default function QuotationHistory({ user }) {
                         {quotations.map(q => {
                             const sc = STATUS_COLORS[q.status] || STATUS_COLORS.pending
                             return (
-                                <>
-                                    <tr key={`row-${q.quotation_id}`}>
+                                // key on Fragment, not on inner <tr>
+                                <React.Fragment key={q.quotation_id}>
+                                    <tr>
                                         <td>#{q.quotation_id}</td>
                                         <td>{q.customer_name}</td>
                                         <td>NPR {Number(q.grand_total ?? 0).toFixed(2)}</td>
@@ -110,7 +105,7 @@ export default function QuotationHistory({ user }) {
                                     </tr>
 
                                     {isAdmin && declineId === q.quotation_id && (
-                                        <tr key={`decline-${q.quotation_id}`}>
+                                        <tr>
                                             <td colSpan={6}>
                                                 <div className="decline-box">
                                                     <p className="decline-label">Provide a reason for declining Quotation #{q.quotation_id}:</p>
@@ -134,7 +129,7 @@ export default function QuotationHistory({ user }) {
                                     )}
 
                                     {selected === q.quotation_id && detail && (
-                                        <tr key={`detail-${q.quotation_id}`}>
+                                        <tr>
                                             <td colSpan={6}>
                                                 <div className="detail-box">
                                                     <h3>Line Items - Quotation #{detail.quotation_id}</h3>
@@ -160,7 +155,7 @@ export default function QuotationHistory({ user }) {
                                             </td>
                                         </tr>
                                     )}
-                                </>
+                                </React.Fragment>
                             )
                         })}
                     </tbody>

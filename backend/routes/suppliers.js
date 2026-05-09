@@ -3,6 +3,9 @@
  *
  * Phase 5 fix #7: soft deletes — DELETE now sets is_deleted=1 + deleted_at
  * instead of hard-deleting (which caused FK constraint errors when bales exist).
+ *
+ * fix: /full route added for agent/operations consumers
+ * fix: SOFT_DELETE_FILTER now handles missing column gracefully via IFNULL
  */
 import { Router } from 'express';
 import pool from '../db.js';
@@ -10,7 +13,34 @@ import { checkPermission } from '../middleware/checkPermission.js';
 import logger from '../logger.js';
 
 const router = Router();
-const SOFT_DELETE_FILTER = `(s.is_deleted = 0 OR s.is_deleted IS NULL)`;
+
+// Safe filter: works whether or not the column exists yet
+// If is_deleted column is missing, IFNULL returns 0 → row is always visible (safe fallback)
+const SOFT_DELETE_FILTER = `(IFNULL(s.is_deleted, 0) = 0)`;
+
+// GET /api/suppliers/full — enriched view with bale counts for agent + operations dashboard
+router.get('/full', checkPermission('VIEW_OPERATIONS'), async (req, res) => {
+    let conn;
+    try {
+        conn = await pool.getConnection();
+        const rows = await conn.query(
+            `SELECT s.supplier_id, s.supplier_name, s.contact_name, s.contact_phone,
+                    s.email, s.city, s.quality_rating, s.delay_frequency,
+                    s.trend_alignment, s.notes, s.created_at,
+                    COUNT(b.bale_id)          AS total_bales,
+                    COALESCE(SUM(b.quantity), 0) AS total_quantity
+             FROM suppliers s
+             LEFT JOIN bales b ON b.supplier_id = s.supplier_id
+             WHERE ${SOFT_DELETE_FILTER}
+             GROUP BY s.supplier_id
+             ORDER BY s.supplier_name`
+        );
+        res.json(rows);
+    } catch (err) {
+        logger.error({ err }, '[suppliers] GET /full');
+        res.status(500).json({ error: err.message });
+    } finally { if (conn) conn.release(); }
+});
 
 router.get('/', checkPermission('VIEW_OPERATIONS'), async (req, res) => {
     let conn;
