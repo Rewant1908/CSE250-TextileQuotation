@@ -5,18 +5,23 @@
 
 import { useState, useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
-import Login from './components/Login'
-import SignUp from './components/SignUp'
-import Dashboard from './components/Dashboard'
-import Products from './components/Products'
-import Suppliers from './components/Suppliers'
-import Retailers from './components/Retailers'
-import Sales from './components/Sales'
-import Quotations from './components/Quotations'
-import Analytics from './components/Analytics'
-import AgentChat from './components/AgentChat'
+import LoginPage            from './components/LoginPage'
+import Dashboard            from './components/OperationsDashboard'
+import Products             from './components/ProductCatalogue'
+import Suppliers            from './components/SupplierManager'
+import Retailers            from './components/RetailerManager'
+import Sales                from './components/SaleRecorder'
+import Quotations           from './components/QuotationHistory'
+import QuotationForm        from './components/QuotationForm'
+import Analytics            from './components/AnalyticsDashboard'
+import AgentChat            from './components/AgentChat'
+import BaleManager          from './components/BaleManager'
+import AdminProductManager  from './components/AdminProductManager'
+import CustomerForm         from './components/CustomerForm'
+import DeadStockAnalytics   from './components/DeadStockAnalytics'
+import WarehouseIntelligence from './components/WarehouseIntelligence'
 
-// ── Session-expired banner component ─────────────────────────────────────────
+// ── Session-expired banner component ───────────────────────────────────────────────
 function SessionExpiredBanner({ onDismiss }) {
     return (
         <div style={{
@@ -47,23 +52,21 @@ function SessionExpiredBanner({ onDismiss }) {
     )
 }
 
-// ── Auth guard ────────────────────────────────────────────────────────────────
+// ── Auth guard ────────────────────────────────────────────────────────────────────────────
 function RequireAuth({ children }) {
     const token = localStorage.getItem('kt_impex_token')
     if (!token) return <Navigate to="/login" replace />
     return children
 }
 
-// ── Inner app (needs useNavigate — must be inside <Router>) ──────────────────
+// ── Inner app (needs useNavigate — must be inside <Router>) ───────────────────────────────
 function AppInner() {
     const navigate = useNavigate()
     const [sessionExpired, setSessionExpired] = useState(false)
 
-    // Issue 2 fix: listen for kt:session-expired dispatched by api.js interceptor
     useEffect(() => {
         const handleExpiry = () => {
             setSessionExpired(true)
-            // Auto-redirect after 3 seconds
             setTimeout(() => {
                 setSessionExpired(false)
                 navigate('/login', { replace: true })
@@ -82,16 +85,18 @@ function AppInner() {
                 }} />
             )}
             <Routes>
-                {/* Public routes */}
-                <Route path="/login"  element={<Login />} />
-                <Route path="/signup" element={<SignUp />} />
+                {/* Public */}
+                <Route path="/login" element={<LoginPage />} />
 
-                {/* Protected routes */}
+                {/* Protected */}
                 <Route path="/" element={
                     <RequireAuth><Dashboard /></RequireAuth>
                 } />
                 <Route path="/products" element={
                     <RequireAuth><Products /></RequireAuth>
+                } />
+                <Route path="/admin/products" element={
+                    <RequireAuth><AdminProductManager /></RequireAuth>
                 } />
                 <Route path="/suppliers" element={
                     <RequireAuth><Suppliers /></RequireAuth>
@@ -99,14 +104,29 @@ function AppInner() {
                 <Route path="/retailers" element={
                     <RequireAuth><Retailers /></RequireAuth>
                 } />
+                <Route path="/retailers/new" element={
+                    <RequireAuth><CustomerForm /></RequireAuth>
+                } />
                 <Route path="/sales" element={
                     <RequireAuth><Sales /></RequireAuth>
                 } />
                 <Route path="/quotations" element={
                     <RequireAuth><Quotations /></RequireAuth>
                 } />
+                <Route path="/quotations/new" element={
+                    <RequireAuth><QuotationForm /></RequireAuth>
+                } />
                 <Route path="/analytics" element={
                     <RequireAuth><Analytics /></RequireAuth>
+                } />
+                <Route path="/analytics/deadstock" element={
+                    <RequireAuth><DeadStockAnalytics /></RequireAuth>
+                } />
+                <Route path="/warehouse" element={
+                    <RequireAuth><WarehouseIntelligence /></RequireAuth>
+                } />
+                <Route path="/bales" element={
+                    <RequireAuth><BaleManager /></RequireAuth>
                 } />
                 <Route path="/agent-chat" element={
                     <RequireAuth><AgentChat /></RequireAuth>
