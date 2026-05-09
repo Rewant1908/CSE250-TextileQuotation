@@ -3,9 +3,8 @@
  *
  * Phase 5 fixes applied:
  *  3. preferred_categories_json now returned in GET / and GET /:id
- *     (was written by migration_v2 stored procedure but never queried)
  *  7. Soft deletes: DELETE now sets is_deleted=1 + deleted_at instead of hard-DELETE
- *     Existing GET queries filter WHERE r.is_deleted = 0 (or IS NULL for old rows)
+ *     GET queries filter WHERE r.is_deleted = 0 (or IS NULL for old rows)
  *  9. assigned_user_id FK: salespeople filter to their own retailers unless admin
  */
 import { Router } from 'express';
@@ -15,15 +14,17 @@ import logger from '../logger.js';
 
 const router = Router();
 
+// Used in SELECT queries that alias the table as `r`
 const SOFT_DELETE_FILTER = `(r.is_deleted = 0 OR r.is_deleted IS NULL)`;
+// Used in UPDATE/DELETE queries with no alias
+const SOFT_DELETE_FILTER_NO_ALIAS = `(is_deleted = 0 OR is_deleted IS NULL)`;
 
-// ── GET /api/retailers ────────────────────────────────────────────────────────
+// ── GET /api/retailers ─────────────────────────────────────────────────────────
 router.get('/', checkPermission('VIEW_OPERATIONS'), async (req, res) => {
     let conn;
     try {
         conn = await pool.getConnection();
 
-        // Phase 5 fix #9: admin sees all; salespeople see only their assigned retailers
         const isAdmin = req.user.role === 'admin';
         const userClause = isAdmin ? '' : 'AND (r.assigned_user_id = ? OR r.assigned_user_id IS NULL)';
         const userParam  = isAdmin ? [] : [req.user.user_id];
@@ -44,7 +45,6 @@ router.get('/', checkPermission('VIEW_OPERATIONS'), async (req, res) => {
             userParam
         );
 
-        // Parse preferred_categories_json for frontend convenience
         const parsed = rows.map(r => ({
             ...r,
             preferred_categories_json: tryParseJson(r.preferred_categories_json)
@@ -57,7 +57,7 @@ router.get('/', checkPermission('VIEW_OPERATIONS'), async (req, res) => {
     } finally { if (conn) conn.release(); }
 });
 
-// ── GET /api/retailers/:id ────────────────────────────────────────────────────
+// ── GET /api/retailers/:id ────────────────────────────────────────────────
 router.get('/:id', checkPermission('VIEW_OPERATIONS'), async (req, res) => {
     let conn;
     try {
@@ -81,7 +81,7 @@ router.get('/:id', checkPermission('VIEW_OPERATIONS'), async (req, res) => {
     } finally { if (conn) conn.release(); }
 });
 
-// ── POST /api/retailers ────────────────────────────────────────────────────────
+// ── POST /api/retailers ─────────────────────────────────────────────────────
 router.post('/', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
     const {
         shop_name, owner_name, contact_phone, market_location, city,
@@ -106,7 +106,6 @@ router.post('/', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
                 city?.trim() || null, payment_pattern || 'cash',
                 preferred_categories || null, preferred_price_segment || null,
                 credit_limit || 0,
-                // Phase 5 fix #9: default assigned_user_id to the creating user
                 assigned_user_id || req.user.user_id
             ]
         );
@@ -117,7 +116,7 @@ router.post('/', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
     } finally { if (conn) conn.release(); }
 });
 
-// ── PUT /api/retailers/:id ─────────────────────────────────────────────────────
+// ── PUT /api/retailers/:id ────────────────────────────────────────────────────
 router.put('/:id', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
     const {
         shop_name, owner_name, contact_phone, market_location, city,
@@ -141,7 +140,7 @@ router.put('/:id', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
                 credit_limit           = COALESCE(?, credit_limit),
                 outstanding_balance    = COALESCE(?, outstanding_balance),
                 assigned_user_id       = COALESCE(?, assigned_user_id)
-             WHERE retailer_id = ? AND ${SOFT_DELETE_FILTER}`,
+             WHERE retailer_id = ? AND ${SOFT_DELETE_FILTER_NO_ALIAS}`,
             [
                 shop_name || null, owner_name || null, contact_phone || null,
                 market_location || null, city || null, payment_pattern || null,
@@ -159,10 +158,6 @@ router.put('/:id', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
 });
 
 // ── DELETE /api/retailers/:id — SOFT DELETE ────────────────────────────────────
-// Phase 5 fix #7: hard DELETE replaced with soft delete.
-// Sets is_deleted=1, deleted_at=NOW(), deleted_by=requesting user.
-// FK constraint errors (transactions referencing this retailer) are avoided entirely.
-// History is fully preserved for analytics joins.
 router.delete('/:id', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
     let conn;
     try {
@@ -172,7 +167,7 @@ router.delete('/:id', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
              SET is_deleted = 1,
                  deleted_at  = NOW(),
                  deleted_by  = ?
-             WHERE retailer_id = ? AND ${SOFT_DELETE_FILTER}`,
+             WHERE retailer_id = ? AND ${SOFT_DELETE_FILTER_NO_ALIAS}`,
             [req.user.user_id, req.params.id]
         );
         if (Number(result.affectedRows) === 0) {
@@ -185,10 +180,10 @@ router.delete('/:id', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
     } finally { if (conn) conn.release(); }
 });
 
-// ── helper ─────────────────────────────────────────────────────────────────────
+// ── helper ───────────────────────────────────────────────────────────────────────────
 function tryParseJson(val) {
     if (!val) return null;
-    if (typeof val === 'object') return val; // already parsed by MariaDB driver
+    if (typeof val === 'object') return val;
     try { return JSON.parse(val); } catch { return val; }
 }
 
