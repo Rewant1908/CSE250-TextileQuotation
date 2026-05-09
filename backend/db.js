@@ -1,15 +1,14 @@
 import { createPool } from 'mariadb';
-import { config } from 'dotenv';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-const __dirname = dirname(fileURLToPath(import.meta.url));
-config({ path: join(__dirname, '.env'), override: false });
+
+// dotenv is loaded once in server.js before any imports.
+// Do NOT call config() here — it causes a duplicate dotenv load
+// and makes dotenv@17 report "injecting env (0)" twice on startup.
 
 const pool = createPool({
-    host:            process.env.DB_HOST || 'localhost',
-    user:            process.env.DB_USER || 'root',
-    password:        process.env.DB_PASSWORD,
-    database:        process.env.DB_NAME || 'kt_impex',
+    host:            process.env.DB_HOST     || 'localhost',
+    user:            process.env.DB_USER     || 'root',
+    password:        process.env.DB_PASSWORD || '',
+    database:        process.env.DB_NAME     || 'kt_impex',
     connectionLimit: 5,
     bigIntAsNumber:  true
 });
