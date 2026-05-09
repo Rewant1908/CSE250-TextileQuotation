@@ -10,7 +10,7 @@
  *
  *   2. That document is embedded via Gemini text-embedding-004 (768-dim).
  *      Embeddings are cached in Redis (key: embed:retailer:<id>) with a 1-hour TTL
- *      so we don’t re-embed on every search.
+ *      so we don't re-embed on every search.
  *
  *   3. The query string is embedded on the fly (no cache — queries are unique).
  *
@@ -28,6 +28,11 @@
  *   If Gemini is unavailable the function throws; the route returns 500.
  *   If Redis is unavailable, every search re-computes embeddings from the DB
  *   (slower but functional).
+ *
+ * Fix (Phase 6 Task 2 patch):
+ *   embed() now calls the Gemini REST v1 endpoint directly instead of using the
+ *   @google/generative-ai SDK. The SDK routes text-embedding-004 to v1beta which
+ *   returns 404. The v1 REST endpoint works correctly.
  */
 
 import pool    from '../db.js'
@@ -39,28 +44,34 @@ const EMBED_TTL       = 60 * 60                  // 1 hour in seconds
 const INDEX_KEY       = 'embed:retailer:index'
 const EMBED_KEY       = (id) => `embed:retailer:${id}`
 
-let _geminiClient = null
 let _rebuildLock  = false
 
-// ── Gemini embedding client ──────────────────────────────────────────────────
+// ── Gemini embedding via REST v1 ─────────────────────────────────────────────
+// The @google/generative-ai SDK sends text-embedding-004 to v1beta which is
+// unsupported. Calling v1 directly via fetch() fixes the 404.
 
-async function getGeminiClient() {
-    if (_geminiClient) return _geminiClient
+async function embed(text) {
     if (!process.env.GEMINI_API_KEY)
         throw new Error('GEMINI_API_KEY not set. Cannot generate embeddings.')
-    const { GoogleGenerativeAI } = await import('@google/generative-ai')
-    _geminiClient = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
-    return _geminiClient
-}
 
-/**
- * embed(text) — returns a 768-dim float array for the given text
- */
-async function embed(text) {
-    const client = await getGeminiClient()
-    const model  = client.getGenerativeModel({ model: EMBEDDING_MODEL })
-    const result = await model.embedContent(text)
-    return result.embedding.values   // float[]
+    const url = `https://generativelanguage.googleapis.com/v1/models/${EMBEDDING_MODEL}:embedContent?key=${process.env.GEMINI_API_KEY}`
+
+    const res = await fetch(url, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+            model:   `models/${EMBEDDING_MODEL}`,
+            content: { parts: [{ text }] },
+        }),
+    })
+
+    if (!res.ok) {
+        const errText = await res.text()
+        throw new Error(`Gemini embed failed: ${res.status} ${errText}`)
+    }
+
+    const json = await res.json()
+    return json.embedding.values   // float[768]
 }
 
 // ── Retailer document builder ─────────────────────────────────────────────────
@@ -161,7 +172,6 @@ export async function rebuildRetailerIndex(db) {
     _rebuildLock = true
     try {
         await cache.del(INDEX_KEY)
-        // Individual row caches will be lazily refreshed in getOrBuildIndex
         const dbPool = db || pool
         const index  = await getOrBuildIndex(dbPool)
         return { rebuilt: true, count: index.length }
