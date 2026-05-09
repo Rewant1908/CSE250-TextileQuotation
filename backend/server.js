@@ -2,6 +2,9 @@
  * server.js — KT IMPEX API entry point
  *
  * Phase 7: /api/admin/settings route registered
+ * Fix: removed app.use('/api', operationsRouter) catch-all that was intercepting
+ *      /api/analytics and /api/bales before their dedicated routers could handle them.
+ *      All operationsRouter paths are now mounted explicitly.
  */
 import { config } from 'dotenv';
 import { fileURLToPath } from 'url';
@@ -52,19 +55,25 @@ app.use(cors({
 // ── Rate limiting ─────────────────────────────────────────────────────────────
 app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 500, standardHeaders: true, legacyHeaders: false }));
 
-// ── Mount routes ─────────────────────────────────────────────────────────────
-app.use('/api/auth',           authRouter);
-app.use('/api/analytics',      analyticsRouter);   // must be before /api catch-all
-app.use('/api/bales',          balesRouter);       // must be before /api catch-all
-app.use('/api/quotations',     quotationsRouter);  // must be before /api catch-all
-app.use('/api/operations',     operationsRouter);  // /api/operations/dashboard etc.
-app.use('/api',                operationsRouter);  // /api/thans, /api/dashboard, /api/inventory
-app.use('/api/transactions',   salesRouter);
-app.use('/api/retailers',      retailersRouter);
-app.use('/api/suppliers',      suppliersRouter);
-app.use('/api/products',       productsRouter);
-app.use('/api/agents',         agentRouter);
-app.use('/api/admin/settings', settingsRouter);
+// ── Mount routes ──────────────────────────────────────────────────────────────
+// IMPORTANT: Do NOT use app.use('/api', operationsRouter) — that catch-all
+// intercepts /api/analytics, /api/bales, /api/quotations etc. before they
+// reach their own routers. Mount every path explicitly instead.
+
+app.use('/api/auth',                   authRouter);
+app.use('/api/analytics',              analyticsRouter);
+app.use('/api/bales',                  balesRouter);
+app.use('/api/quotations',             quotationsRouter);
+app.use('/api/transactions',           salesRouter);
+app.use('/api/retailers',              retailersRouter);
+app.use('/api/suppliers',              suppliersRouter);
+app.use('/api/products',               productsRouter);
+app.use('/api/agents',                 agentRouter);
+app.use('/api/admin/settings',         settingsRouter);
+app.use('/api/admin',                  operationsRouter);  // /api/admin/recalculate-speeds
+app.use('/api/operations',             operationsRouter);  // /api/operations/dashboard
+app.use('/api/thans',                  operationsRouter);  // /api/thans
+app.use('/api/inventory',              operationsRouter);  // /api/inventory/search
 
 // ── Health ────────────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
