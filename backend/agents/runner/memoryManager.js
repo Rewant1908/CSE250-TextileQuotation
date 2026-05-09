@@ -48,7 +48,7 @@ export async function buildLiveContext(agentName, db) {
 // Inventory Agent — stock health snapshot
 // ---------------------------------------------------------------------------
 async function _inventoryContext(db) {
-    const [totals] = await db.query(`
+    const rows = await db.query(`
         SELECT
             COUNT(*)                                          AS total_thans,
             SUM(remaining_stock)                              AS total_meters,
@@ -60,6 +60,7 @@ async function _inventoryContext(db) {
         FROM thans
         WHERE status != 'sold'
     `)
+    const totals = rows[0] ?? {}
 
     const deadRows = await db.query(`
         SELECT fabric_type, color, design,
@@ -85,19 +86,23 @@ async function _inventoryContext(db) {
 
     const lines = [
         `## Live Inventory Snapshot — ${_today()}`,
-        `Total Thans: ${totals[0].total_thans} | Total Meters: ${totals[0].total_meters} | Stock Value: ₹${totals[0].total_stock_value}`,
-        `Movement: Fast=${totals[0].fast_count} Slow=${totals[0].slow_count} Dead=${totals[0].dead_count} New=${totals[0].new_count}`,
+        `Total Thans: ${totals.total_thans ?? 0} | Total Meters: ${totals.total_meters ?? 0} | Stock Value: ₹${totals.total_stock_value ?? 0}`,
+        `Movement: Fast=${totals.fast_count ?? 0} Slow=${totals.slow_count ?? 0} Dead=${totals.dead_count ?? 0} New=${totals.new_count ?? 0}`,
         '',
         '### Dead Stock (top 10 by days stagnant)',
-        ...deadRows.map(r =>
-            `- ${r.fabric_type} ${r.color} ${r.design || ''} | ${r.remaining_stock}m | Loc: ${r.warehouse_location || 'unassigned'} | ${r.days_stagnant}d stagnant`
-        ),
+        deadRows.length
+            ? deadRows.map(r =>
+                `- ${r.fabric_type} ${r.color} ${r.design || ''} | ${r.remaining_stock}m | Loc: ${r.warehouse_location || 'unassigned'} | ${r.days_stagnant}d stagnant`
+              )
+            : ['- No dead stock at this time.'],
         '',
         '### Category Breakdown',
-        ...categoryRows.map(r =>
-            `- ${r.category}: ${r.than_count} thans, ${r.meters_remaining}m remaining, avg margin ₹${r.avg_margin}/m`
-        ),
-    ]
+        categoryRows.length
+            ? categoryRows.map(r =>
+                `- ${r.category}: ${r.than_count} thans, ${r.meters_remaining}m remaining, avg margin ₹${r.avg_margin}/m`
+              )
+            : ['- No category data available.'],
+    ].flat()
     return lines.join('\n')
 }
 
@@ -113,6 +118,7 @@ async function _retailerContext(db) {
                MAX(t.created_at)            AS last_order_date
         FROM retailers r
         LEFT JOIN transactions t ON r.retailer_id = t.retailer_id
+        WHERE (r.is_deleted = 0 OR r.is_deleted IS NULL)
         GROUP BY r.retailer_id
         ORDER BY total_revenue DESC
         LIMIT 15
@@ -123,6 +129,7 @@ async function _retailerContext(db) {
                outstanding_balance, payment_pattern
         FROM retailers
         WHERE outstanding_balance > 0
+          AND (is_deleted = 0 OR is_deleted IS NULL)
         ORDER BY outstanding_balance DESC
         LIMIT 10
     `)
@@ -131,15 +138,19 @@ async function _retailerContext(db) {
         `## Live Retailer Snapshot — ${_today()}`,
         '',
         '### Top 15 Retailers by Revenue',
-        ...topRetailers.map(r =>
-            `- ${r.shop_name} (${r.market_location}): ${r.total_orders} orders, ₹${r.total_revenue} revenue, last order: ${_dateStr(r.last_order_date)}, payment: ${r.payment_pattern}, balance: ₹${r.outstanding_balance}`
-        ),
+        topRetailers.length
+            ? topRetailers.map(r =>
+                `- ${r.shop_name} (${r.market_location}): ${r.total_orders} orders, ₹${r.total_revenue} revenue, last order: ${_dateStr(r.last_order_date)}, payment: ${r.payment_pattern}, balance: ₹${r.outstanding_balance}`
+              )
+            : ['- No retailer data available.'],
         '',
         '### Outstanding Balances (top 10)',
-        ...overdueRows.map(r =>
-            `- ${r.shop_name} (${r.market_location}): ₹${r.outstanding_balance} outstanding, pattern: ${r.payment_pattern}`
-        ),
-    ]
+        overdueRows.length
+            ? overdueRows.map(r =>
+                `- ${r.shop_name} (${r.market_location}): ₹${r.outstanding_balance} outstanding, pattern: ${r.payment_pattern}`
+              )
+            : ['- No outstanding balances.'],
+    ].flat()
     return lines.join('\n')
 }
 
@@ -163,6 +174,7 @@ async function _procurementContext(db) {
                COUNT(b.bale_id) AS total_bales_purchased
         FROM suppliers s
         LEFT JOIN bales b ON s.supplier_id = b.supplier_id
+        WHERE (s.is_deleted = 0 OR s.is_deleted IS NULL)
         GROUP BY s.supplier_id
         ORDER BY s.quality_rating DESC
     `)
@@ -181,20 +193,24 @@ async function _procurementContext(db) {
         `## Live Procurement Snapshot — ${_today()}`,
         '',
         '### Recent Bale Purchases (last 20)',
-        ...baleRows.map(r =>
-            `- ${r.bale_code} | ${r.fabric_category} | ${r.supplier_name} (quality: ${r.quality_rating}, delays: ${r.delay_frequency}) | ₹${r.purchase_cost} | arrived: ${_dateStr(r.arrival_date)} | status: ${r.status}`
-        ),
+        baleRows.length
+            ? baleRows.map(r =>
+                `- ${r.bale_code} | ${r.fabric_category} | ${r.supplier_name} (quality: ${r.quality_rating}, delays: ${r.delay_frequency}) | ₹${r.purchase_cost} | arrived: ${_dateStr(r.arrival_date)} | status: ${r.status}`
+              )
+            : ['- No bale purchase records.'],
         '',
         '### Supplier Performance',
-        ...supplierPerf.map(r =>
-            `- ${r.supplier_name}: quality=${r.quality_rating}/5, delay_freq=${r.delay_frequency}, trend_align=${r.trend_alignment}, price_range=${r.price_range}, bales_bought=${r.total_bales_purchased}`
-        ),
+        supplierPerf.length
+            ? supplierPerf.map(r =>
+                `- ${r.supplier_name}: quality=${r.quality_rating}/5, delay_freq=${r.delay_frequency}, trend_align=${r.trend_alignment}, price_range=${r.price_range}, bales_bought=${r.total_bales_purchased}`
+              )
+            : ['- No supplier data.'],
         '',
         '### Low Stock Categories (<200m remaining)',
         lowStockCats.length
-            ? lowStockCats.map(r => `- ${r.category}: ${r.meters_left}m left`).join('\n')
-            : '- No critical low-stock categories at this time.',
-    ]
+            ? lowStockCats.map(r => `- ${r.category}: ${r.meters_left}m left`)
+            : ['- No critical low-stock categories at this time.'],
+    ].flat()
     return lines.join('\n')
 }
 
@@ -213,10 +229,11 @@ async function _warehouseContext(db) {
         ORDER BY total_meters DESC
     `)
 
-    const unassigned = await db.query(`
+    const unassignedRows = await db.query(`
         SELECT COUNT(*) AS count FROM thans
         WHERE (warehouse_location IS NULL OR warehouse_location = '') AND status != 'sold'
     `)
+    const unassignedCount = unassignedRows[0]?.count ?? 0
 
     const recentMovements = await db.query(`
         SELECT im.movement_type, im.quantity,
@@ -229,18 +246,22 @@ async function _warehouseContext(db) {
 
     const lines = [
         `## Live Warehouse Snapshot — ${_today()}`,
-        `Unassigned thans (no location): ${unassigned[0]?.count || 0}`,
+        `Unassigned thans (no location): ${unassignedCount}`,
         '',
         '### Stock by Location',
-        ...locationRows.map(r =>
-            `- ${r.warehouse_location || 'unassigned'}: ${r.than_count} thans, ${r.total_meters}m, dead=${r.dead_count}`
-        ),
+        locationRows.length
+            ? locationRows.map(r =>
+                `- ${r.warehouse_location || 'unassigned'}: ${r.than_count} thans, ${r.total_meters}m, dead=${r.dead_count}`
+              )
+            : ['- No warehouse location data.'],
         '',
         '### Recent Inventory Movements (last 20)',
-        ...recentMovements.map(r =>
-            `- [${_dateStr(r.movement_date)}] ${r.movement_type} | ${r.fabric_type} ${r.color} | qty: ${r.quantity} | ${r.notes || ''}`
-        ),
-    ]
+        recentMovements.length
+            ? recentMovements.map(r =>
+                `- [${_dateStr(r.movement_date)}] ${r.movement_type} | ${r.fabric_type} ${r.color} | qty: ${r.quantity} | ${r.notes || ''}`
+              )
+            : ['- No recent movements.'],
+    ].flat()
     return lines.join('\n')
 }
 
@@ -271,6 +292,7 @@ async function _pricingContext(db) {
         WHERE discount > 0
           AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
     `)
+    const disc = discountRows[0] ?? {}
 
     const lowMarginThans = await db.query(`
         SELECT fabric_type, color, design,
@@ -288,19 +310,21 @@ async function _pricingContext(db) {
         `## Live Pricing Snapshot — ${_today()}`,
         '',
         '### Margin by Category (last 90 days)',
-        ...marginRows.map(r =>
-            `- ${r.category}: avg ₹${r.avg_margin}/m, min ₹${r.min_margin}/m, max ₹${r.max_margin}/m, ${r.txn_count} txns, total margin ₹${r.total_margin_earned}`
-        ),
+        marginRows.length
+            ? marginRows.map(r =>
+                `- ${r.category}: avg ₹${r.avg_margin}/m, min ₹${r.min_margin}/m, max ₹${r.max_margin}/m, ${r.txn_count} txns, total margin ₹${r.total_margin_earned}`
+              )
+            : ['- No transaction data in last 90 days.'],
         '',
-        `### Discount Activity (last 30 days): avg=${discountRows[0]?.avg_discount}%, max=${discountRows[0]?.max_discount}%, ${discountRows[0]?.txn_with_discount} discounted txns`,
+        `### Discount Activity (last 30 days): avg=${disc.avg_discount ?? 0}%, max=${disc.max_discount ?? 0}%, ${disc.txn_with_discount ?? 0} discounted txns`,
         '',
         '### Low Margin Thans (<₹10/m margin)',
         lowMarginThans.length
             ? lowMarginThans.map(r =>
                 `- ${r.fabric_type} ${r.color} ${r.design || ''}: cost ₹${r.cost_per_meter}/m, selling ₹${r.selling_price}/m, margin ₹${r.margin}/m, ${r.remaining_stock}m left`
-              ).join('\n')
-            : '- No critically low-margin stock at this time.',
-    ]
+              )
+            : ['- No critically low-margin stock at this time.'],
+    ].flat()
     return lines.join('\n')
 }
 
@@ -333,17 +357,19 @@ async function _salesContext(db) {
         `## Live Sales Snapshot — ${_today()}`,
         '',
         '### Recent Transactions (last 20)',
-        ...recentTxns.map(r =>
-            `- ${_dateStr(r.created_at)} | ${r.shop_name} | ${r.fabric_type} ${r.color} | ${r.quantity}m @ ₹${r.price}/m | margin ₹${r.margin}/m | ${r.payment_method}${r.discount ? ` | disc ${r.discount}%` : ''}`
-        ),
+        recentTxns.length
+            ? recentTxns.map(r =>
+                `- ${_dateStr(r.created_at)} | ${r.shop_name} | ${r.fabric_type} ${r.color} | ${r.quantity}m @ ₹${r.price}/m | margin ₹${r.margin}/m | ${r.payment_method}${r.discount ? ` | disc ${r.discount}%` : ''}`
+              )
+            : ['- No recent transactions.'],
         '',
         '### Pending Quotations',
         pendingQuotes.length
             ? pendingQuotes.map(r =>
                 `- ${r.quotation_number} | ${r.customer_name} | ₹${r.total_amount} | status: ${r.status} | valid until: ${_dateStr(r.valid_until)}`
-              ).join('\n')
-            : '- No pending quotations.',
-    ]
+              )
+            : ['- No pending quotations.'],
+    ].flat()
     return lines.join('\n')
 }
 
@@ -351,7 +377,6 @@ async function _salesContext(db) {
 // Coordinator Agent — cross-domain summary
 // ---------------------------------------------------------------------------
 async function _coordinatorContext(db) {
-    // Pull mini-snapshots from each domain
     const [inv, ret, proc, price] = await Promise.all([
         _inventoryContext(db),
         _retailerContext(db),
