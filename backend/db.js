@@ -1,6 +1,9 @@
 import { createPool } from 'mariadb';
-// dotenv is loaded in server.js before this module is imported.
-// No need to call dotenv.config() here.
+import { config } from 'dotenv';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+const __dirname = dirname(fileURLToPath(import.meta.url));
+config({ path: join(__dirname, '.env'), override: false });
 
 const pool = createPool({
     host:            process.env.DB_HOST || 'localhost',
