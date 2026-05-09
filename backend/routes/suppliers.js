@@ -1,11 +1,15 @@
 /**
  * /api/suppliers
  *
- * Actual schema columns:
- *   supplier_id, supplier_name, factory_name, product_specialization,
- *   quality_rating, delay_frequency, price_range, popular_categories,
- *   return_issues, trend_alignment, created_at,
- *   is_deleted, deleted_at, deleted_by
+ * Actual schema:
+ *   suppliers: supplier_id, supplier_name, factory_name, product_specialization,
+ *              quality_rating, delay_frequency, price_range, popular_categories,
+ *              return_issues, trend_alignment, created_at, is_deleted, deleted_at, deleted_by
+ *
+ *   thans: than_id, bale_id (FK→bales), meter_length, remaining_stock, ...
+ *   bales: bale_id, supplier_id (FK→suppliers), ...
+ *
+ *   So supplier → bales → thans (two hops)
  */
 import { Router } from 'express';
 import pool from '../db.js';
@@ -21,7 +25,7 @@ const SELECT_COLS = `
     s.quality_rating, s.delay_frequency, s.price_range, s.popular_categories,
     s.return_issues, s.trend_alignment, s.created_at`;
 
-// GET /api/suppliers/full — enriched with than counts
+// GET /api/suppliers/full — enriched with than counts via bales join
 // Must be before /:id so Express doesn't treat "full" as an id param
 router.get('/full', checkPermission('VIEW_OPERATIONS'), async (req, res) => {
     let conn;
@@ -29,10 +33,12 @@ router.get('/full', checkPermission('VIEW_OPERATIONS'), async (req, res) => {
         conn = await pool.getConnection();
         const rows = await conn.query(
             `SELECT ${SELECT_COLS},
-                    COUNT(t.than_id)                 AS total_thans,
-                    COALESCE(SUM(t.total_meters), 0) AS total_meters
+                    COUNT(t.than_id)                        AS total_thans,
+                    COALESCE(SUM(t.meter_length), 0)        AS total_meters,
+                    COALESCE(SUM(t.remaining_stock), 0)     AS remaining_stock
              FROM suppliers s
-             LEFT JOIN thans t ON t.supplier_id = s.supplier_id
+             LEFT JOIN bales b    ON b.supplier_id = s.supplier_id
+             LEFT JOIN thans t    ON t.bale_id     = b.bale_id
              WHERE ${SOFT_DELETE_FILTER}
              GROUP BY s.supplier_id
              ORDER BY s.supplier_name`
@@ -95,14 +101,14 @@ router.post('/', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 supplier_name.trim(),
-                factory_name?.trim()            || null,
-                product_specialization?.trim()  || null,
-                quality_rating                  || null,
-                delay_frequency                 || 'medium',
-                price_range?.trim()             || null,
-                popular_categories?.trim()      || null,
-                return_issues?.trim()           || null,
-                trend_alignment                 || 'average',
+                factory_name?.trim()           || null,
+                product_specialization?.trim() || null,
+                quality_rating                 || null,
+                delay_frequency                || 'medium',
+                price_range?.trim()            || null,
+                popular_categories?.trim()     || null,
+                return_issues?.trim()          || null,
+                trend_alignment                || 'average',
             ]
         );
         res.status(201).json({ success: true, supplier_id: Number(result.insertId) });
