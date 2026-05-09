@@ -1,12 +1,16 @@
 /**
  * /api/operations, /api/thans, /api/inventory
  *
- * Phase 5 fixes applied:
+ * Phase 7 additions:
+ *  1. retailerSignals — retailer affinity metric
+ *     category_affinity  : top product category by meters bought per retailer
+ *     affinity_score     : affinity_category_meters / total_meters_bought (0-1)
+ *  2. seasonalMovement — monthly sold meters vs 3-month rolling average per category
+ *  3. recalculateSpeeds() — reads dead_stock_days from app_settings (configurable threshold)
+ *
+ * Phase 5 fixes retained:
  *  2. recalculateSpeeds() dead threshold changed from 90 → DEAD_DAYS (60)
- *     import DEAD_DAYS from sales.js — single source of truth across all classifiers
  *  6. POST /api/thans/:id/image — image_url upload endpoint (base64 or URL body)
- * Fix: retailerSignals subquery now includes revenue so tx.price is not referenced directly
- * Fix: LoginPage redirect handled in LoginPage itself via useNavigate
  */
 import express from 'express';
 import pool from '../db.js';
@@ -14,6 +18,7 @@ import { checkPermission } from '../middleware/checkPermission.js';
 import { cache, invalidate } from '../middleware/cacheMiddleware.js';
 import { flush } from '../cache.js';
 import { DEAD_DAYS } from './sales.js';
+import { getDeadStockDays } from './settings.js';
 import logger from '../logger.js';
 
 const router = express.Router();
@@ -109,6 +114,7 @@ router.get('/dashboard',
         try {
             conn = await pool.getConnection();
 
+            // ── 1. Summary KPIs ───────────────────────────────────────────────
             const [summary] = await conn.query(
                 `SELECT
                     COUNT(DISTINCT b.bale_id)  AS total_bales,
@@ -124,6 +130,7 @@ router.get('/dashboard',
                  LEFT JOIN bales b ON t.bale_id = b.bale_id`
             );
 
+            // ── 2. Category movement ──────────────────────────────────────────
             const categoryMovement = await conn.query(
                 `SELECT
                     COALESCE(p.category, t.fabric_type) AS category,
@@ -147,6 +154,7 @@ router.get('/dashboard',
                  LIMIT 8`
             );
 
+            // ── 3. Dead stock ─────────────────────────────────────────────────
             const deadStock = await conn.query(
                 `SELECT
                     t.than_id, t.than_code, t.fabric_type, t.color, t.design,
@@ -175,8 +183,15 @@ router.get('/dashboard',
                  LIMIT 15`
             );
 
-            // Fix: subquery now includes revenue = price*quantity-discount so outer query
-            // does not reference tx.price or tx.discount (columns not on the subquery result)
+            // ── 4. Retailer signals + affinity metric (Phase 7) ───────────────
+            //
+            // affinity_category  : product category with the most meters bought by this retailer
+            // affinity_score     : affinity_category_meters / total_meters_bought  (0.00–1.00)
+            //
+            // Strategy:
+            //   a) compute per-retailer per-category meters in subquery cat_sales
+            //   b) rank by meters DESC within each retailer using ROW_NUMBER()
+            //   c) join the top-1 row back to the main retailer query
             const retailerSignals = await conn.query(
                 `SELECT
                     r.retailer_id, r.shop_name, r.market_location, r.payment_pattern,
@@ -185,21 +200,48 @@ router.get('/dashboard',
                     COUNT(tx.transaction_id)          AS order_count,
                     COALESCE(SUM(tx.quantity), 0)      AS meters_bought,
                     COALESCE(SUM(tx.revenue), 0)       AS revenue,
-                    COALESCE(SUM(tx.margin), 0)        AS margin
+                    COALESCE(SUM(tx.margin), 0)        AS margin,
+                    aff.affinity_category,
+                    ROUND(
+                        COALESCE(aff.affinity_meters, 0) /
+                        NULLIF(COALESCE(SUM(tx.quantity), 0), 0),
+                        3
+                    ) AS affinity_score
                  FROM retailers r
                  LEFT JOIN (
                     SELECT transaction_id, retailer_id, quantity, margin,
                            (price * quantity - COALESCE(discount, 0)) AS revenue
                     FROM transactions
                  ) tx ON r.retailer_id = tx.retailer_id
+                 LEFT JOIN (
+                    -- top category per retailer by meters
+                    SELECT retailer_id, category AS affinity_category, cat_meters AS affinity_meters
+                    FROM (
+                        SELECT
+                            tx2.retailer_id,
+                            COALESCE(p2.category, t2.fabric_type) AS category,
+                            SUM(tx2.quantity) AS cat_meters,
+                            ROW_NUMBER() OVER (
+                                PARTITION BY tx2.retailer_id
+                                ORDER BY SUM(tx2.quantity) DESC
+                            ) AS rn
+                        FROM transactions tx2
+                        LEFT JOIN thans    t2 ON tx2.than_id    = t2.than_id
+                        LEFT JOIN products p2 ON tx2.product_id = p2.product_id
+                        WHERE tx2.retailer_id IS NOT NULL
+                        GROUP BY tx2.retailer_id, COALESCE(p2.category, t2.fabric_type)
+                    ) ranked
+                    WHERE rn = 1
+                 ) aff ON r.retailer_id = aff.retailer_id
                  GROUP BY
                     r.retailer_id, r.shop_name, r.market_location, r.payment_pattern,
                     r.preferred_categories, r.preferred_price_segment, r.outstanding_balance,
-                    r.preferred_categories_json
+                    r.preferred_categories_json, aff.affinity_category, aff.affinity_meters
                  ORDER BY revenue DESC, meters_bought DESC
                  LIMIT 8`
             );
 
+            // ── 5. Supplier signals ───────────────────────────────────────────
             const supplierSignals = await conn.query(
                 `SELECT
                     s.supplier_id, s.supplier_name, s.quality_rating,
@@ -219,12 +261,70 @@ router.get('/dashboard',
                  ORDER BY realized_margin DESC, meters_sold DESC`
             );
 
-            res.json({ summary, categoryMovement, deadStock, retailerSignals, supplierSignals });
+            // ── 6. Seasonal movement (Phase 7) ────────────────────────────────
+            //
+            // Returns last 6 months of monthly sold meters per category,
+            // plus a 3-month rolling average for each month/category.
+            //
+            // rolling_avg_3m = AVG of current month + up to 2 prior months
+            // (computed in JS after fetching to avoid complex window-function syntax
+            //  across MariaDB versions)
+            const seasonalRaw = await conn.query(
+                `SELECT
+                    COALESCE(p.category, t.fabric_type)         AS category,
+                    DATE_FORMAT(tx.transaction_date, '%Y-%m')   AS month,
+                    SUM(tx.quantity)                             AS sold_meters
+                 FROM transactions tx
+                 LEFT JOIN thans    t ON tx.than_id    = t.than_id
+                 LEFT JOIN products p ON tx.product_id = p.product_id
+                 WHERE tx.transaction_date >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+                 GROUP BY COALESCE(p.category, t.fabric_type), DATE_FORMAT(tx.transaction_date, '%Y-%m')
+                 ORDER BY category, month`
+            );
+
+            // Compute rolling 3-month average in JS
+            const seasonalMovement = computeRolling(seasonalRaw);
+
+            res.json({ summary, categoryMovement, deadStock, retailerSignals, supplierSignals, seasonalMovement });
         } catch (err) {
             res.status(500).json({ error: err.message });
         } finally { if (conn) conn.release(); }
     }
 );
+
+/**
+ * computeRolling(rows)
+ *
+ * Input:  [{ category, month: 'YYYY-MM', sold_meters }, ...]
+ * Output: [{ category, month, sold_meters, rolling_avg_3m }, ...]
+ *
+ * rolling_avg_3m = mean of sold_meters for this month and the 2 preceding months
+ * within the same category. If fewer than 3 data points exist, uses what's available.
+ */
+function computeRolling(rows) {
+    // group by category
+    const byCategory = {};
+    for (const r of rows) {
+        if (!byCategory[r.category]) byCategory[r.category] = [];
+        byCategory[r.category].push({ month: r.month, sold_meters: Number(r.sold_meters) });
+    }
+
+    const result = [];
+    for (const [category, months] of Object.entries(byCategory)) {
+        // months are already sorted ASC by the SQL query
+        for (let i = 0; i < months.length; i++) {
+            const window = months.slice(Math.max(0, i - 2), i + 1);
+            const avg    = window.reduce((s, m) => s + m.sold_meters, 0) / window.length;
+            result.push({
+                category,
+                month:          months[i].month,
+                sold_meters:    months[i].sold_meters,
+                rolling_avg_3m: Math.round(avg * 100) / 100,
+            });
+        }
+    }
+    return result;
+}
 
 // ── GET /api/inventory/search ─────────────────────────────────────────────────
 router.get('/inventory/search', async (req, res) => {
@@ -284,7 +384,15 @@ router.post('/admin/recalculate-speeds', checkPermission('MANAGE_PRODUCTS'), asy
     res.json({ success: true, updated });
 });
 
-async function recalculateSpeeds() {
+/**
+ * recalculateSpeeds()
+ *
+ * Phase 7: reads dead_stock_days from app_settings instead of using the
+ * hardcoded DEAD_DAYS constant. Falls back to DEAD_DAYS if the table
+ * doesn't exist yet.
+ */
+export async function recalculateSpeeds() {
+    const deadDays = await getDeadStockDays();
     let conn;
     try {
         conn = await pool.getConnection();
@@ -304,11 +412,11 @@ async function recalculateSpeeds() {
             const idle  = Number(row.idle_days  || 0);
             const sales = Number(row.sale_count || 0);
             let speed;
-            if (sales === 0)           speed = 'new';
-            else if (idle >= DEAD_DAYS) speed = 'dead';
-            else if (idle >= 30)        speed = 'slow';
-            else if (idle >= 8)         speed = 'medium';
-            else                        speed = 'fast';
+            if (sales === 0)          speed = 'new';
+            else if (idle >= deadDays) speed = 'dead';
+            else if (idle >= 30)       speed = 'slow';
+            else if (idle >= 8)        speed = 'medium';
+            else                       speed = 'fast';
             await conn.query('UPDATE thans SET movement_speed = ? WHERE than_id = ?', [speed, row.than_id]);
             updated++;
         }
@@ -316,5 +424,6 @@ async function recalculateSpeeds() {
     } finally { if (conn) conn.release(); }
 }
 
-export { recalculateSpeeds };
+export { recalculateSpeeds as default };
+export { router as default };
 export default router;

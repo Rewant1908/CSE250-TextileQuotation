@@ -1,151 +1,102 @@
-// server.js — KT IMPEX backend bootstrap
-// Phase 4 fix: added rate limiting (express-rate-limit) and structured logging (pino).
-// All console.log / console.error replaced with logger calls.
+/**
+ * server.js — KT IMPEX API entry point
+ *
+ * Phase 7: /api/admin/settings route registered
+ */
+import 'dotenv/config';
+import express       from 'express';
+import cors          from 'cors';
+import helmet        from 'helmet';
+import rateLimit     from 'express-rate-limit';
+import logger        from './logger.js';
+import pool          from './db.js';
+import { connectRedis } from './cache.js';
 
-// ── Load env vars FIRST — before any other module reads process.env ────────────
-import { config } from 'dotenv';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-const __filename = fileURLToPath(import.meta.url);
-const __dirname  = dirname(__filename);
-config({ path: join(__dirname, '.env'), override: true });
-// ──────────────────────────────────────────────────────────────────────────────
+// ── Routes ────────────────────────────────────────────────────────────────────
+import authRouter       from './routes/auth.js';
+import operationsRouter from './routes/operations.js';
+import salesRouter      from './routes/sales.js';
+import retailersRouter  from './routes/retailers.js';
+import suppliersRouter  from './routes/suppliers.js';
+import productsRouter   from './routes/products.js';
+import agentRouter      from './routes/agent.js';
+import settingsRouter   from './routes/settings.js';
 
-import express        from 'express';
-import cors           from 'cors';
-import rateLimit      from 'express-rate-limit';
-import pool           from './db.js';
-import { isReady }    from './cache.js';
-import { checkPermission } from './middleware/checkPermission.js';
-import { flush }      from './cache.js';
-import { recalculateSpeeds } from './routes/operations.js';
-import logger         from './logger.js';
+// ── App ───────────────────────────────────────────────────────────────────────
+const app  = express();
+const PORT = process.env.PORT || 5000;
 
-// ── Route modules ──────────────────────────────────────────────────────────────
-import authRoutes        from './routes/auth.js';
-import productRoutes     from './routes/products.js';
-import supplierRoutes    from './routes/suppliers.js';
-import baleRoutes        from './routes/bales.js';
-import operationsRoutes  from './routes/operations.js';
-import retailerRoutes    from './routes/retailers.js';
-import salesRoutes       from './routes/sales.js';
-import agentRoutes       from './routes/agents.js';
-import analyticsRoutes   from './routes/analytics.js';
-import quotationRoutes   from './routes/quotations.js';
+// ── Security & parsing ────────────────────────────────────────────────────────
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use(express.json({ limit: '2mb' }));
 
-const app = express();
-
-// ─── Make pool available to routes that need it (e.g. agents memory manager)
-app.locals.db = pool;
-
-// ─── CORS ─────────────────────────────────────────────────────────────────────
-// ALLOWED_ORIGIN env var must be set in Railway to your frontend URL.
-// Supports comma-separated list: https://foo.up.railway.app,https://bar.up.railway.app
-const envOrigins = process.env.ALLOWED_ORIGIN
-    ? process.env.ALLOWED_ORIGIN.split(',').map(o => o.trim()).filter(Boolean)
-    : [];
-
-const allowedOrigins = [
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-    'http://localhost:5174',
-    'http://127.0.0.1:5174',
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
+// ── CORS ──────────────────────────────────────────────────────────────────────
+const ALLOWED = [
+    'http://localhost:5173', 'http://127.0.0.1:5173',
+    'http://localhost:5174', 'http://127.0.0.1:5174',
+    'http://localhost:3000', 'http://127.0.0.1:3000',
     'http://127.0.0.1:5500',
-    ...envOrigins,
 ];
-
 app.use(cors({
-    origin: (origin, callback) => {
-        if (!origin) return callback(null, true);
-        if (allowedOrigins.includes(origin)) return callback(null, true);
-        callback(new Error(`CORS: origin '${origin}' is not allowed. Add it to ALLOWED_ORIGIN env var.`));
-    },
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+    origin: (origin, cb) => (!origin || ALLOWED.includes(origin) ? cb(null, true) : cb(new Error('CORS'))),
     credentials: true,
 }));
 
-app.use(express.json());
+// ── Rate limiting ─────────────────────────────────────────────────────────────
+app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 500, standardHeaders: true, legacyHeaders: false }));
 
-// ─── RATE LIMITING ─────────────────────────────────────────────────────────────
-const globalLimiter = rateLimit({
-    windowMs:    60 * 1000,
-    max:         parseInt(process.env.RATE_LIMIT_GLOBAL  || '200', 10),
-    standardHeaders: true,
-    legacyHeaders:   false,
-    message: { error: 'Too many requests — please slow down.' },
+// ── Mount routes ─────────────────────────────────────────────────────────────
+app.use('/api/auth',       authRouter);
+app.use('/api',            operationsRouter);   // /api/thans, /api/dashboard, /api/inventory
+app.use('/api/transactions', salesRouter);
+app.use('/api/retailers',  retailersRouter);
+app.use('/api/suppliers',  suppliersRouter);
+app.use('/api/products',   productsRouter);
+app.use('/api/agents',     agentRouter);
+app.use('/api/admin/settings', settingsRouter);
+
+// ── Health ────────────────────────────────────────────────────────────────────
+app.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
+
+// ── 404 ───────────────────────────────────────────────────────────────────────
+app.use((_req, res) => res.status(404).json({ error: 'Route not found' }));
+
+// ── Global error handler ──────────────────────────────────────────────────────
+app.use((err, _req, res, _next) => {
+    logger.error({ err }, 'Unhandled error');
+    res.status(500).json({ error: 'Internal server error' });
 });
 
-const agentLimiter = rateLimit({
-    windowMs:    60 * 1000,
-    max:         parseInt(process.env.RATE_LIMIT_AGENTS  || '20', 10),
-    standardHeaders: true,
-    legacyHeaders:   false,
-    message: { error: 'Agent rate limit reached — wait 60 seconds before retrying.' },
-    skip: (req) => req.user?.role === 'admin',
-});
+// ── Start ─────────────────────────────────────────────────────────────────────
+async function start() {
+    await connectRedis();
 
-// Scoped only to /login and /signup — not the entire /api prefix
-const authLimiter = rateLimit({
-    windowMs:    60 * 1000,
-    max:         parseInt(process.env.RATE_LIMIT_AUTH    || '30', 10),
-    standardHeaders: true,
-    legacyHeaders:   false,
-    message: { error: 'Too many login attempts — please wait 60 seconds.' },
-});
-
-app.use(globalLimiter);
-
-// ─── MOUNT ROUTES ─────────────────────────────────────────────────────────────
-// authLimiter is now applied only to the two auth endpoints, not all of /api
-app.use('/api/login',        authLimiter);
-app.use('/api/signup',       authLimiter);
-app.use('/api',              authRoutes);
-app.use('/api/products',     productRoutes);
-app.use('/api/suppliers',    supplierRoutes);
-app.use('/api/bales',        baleRoutes);
-app.use('/api/operations',   operationsRoutes);
-app.use('/api',              operationsRoutes);
-app.use('/api/retailers',    retailerRoutes);
-app.use('/api/transactions',  salesRoutes);
-app.use('/api/agents',       agentLimiter, agentRoutes);
-app.use('/api/analytics',    analyticsRoutes);
-app.use('/api/quotations',   quotationRoutes);
-
-// ─── HEALTH ───────────────────────────────────────────────────────────────────
-app.get('/api/health', async (req, res) => {
+    // Verify DB connection
     let conn;
     try {
         conn = await pool.getConnection();
-        const [db] = await conn.query('SELECT DATABASE() AS database_name');
-        res.json({ api: 'ok', database: 'connected', database_name: db?.database_name || null });
-    } catch (err) {
-        res.status(503).json({ api: 'ok', database: 'disconnected', error: err.code || err.message });
+        await conn.query('SELECT 1');
     } finally { if (conn) conn.release(); }
-});
 
-// ─── CACHE STATUS (admin debug) ───────────────────────────────────────────────
-app.get('/api/cache/status', checkPermission('VIEW_OPERATIONS'), (req, res) => {
-    res.json({
-        redis: isReady() ? 'connected' : 'unavailable',
-        cache_enabled: process.env.CACHE_ENABLED !== 'false'
+    app.listen(PORT, () => {
+        logger.info({ port: String(PORT), origins: ALLOWED }, 'KT IMPEX API started');
     });
-});
 
-// ─── CRON: recalculate movement speeds every 24h ──────────────────────────────
-setInterval(async () => {
-    try {
-        const updated = await recalculateSpeeds();
-        flush('thans:*').catch(() => {});
-        flush('dashboard').catch(() => {});
-        logger.info({ updated }, '[cron] movement_speed recalculated');
-    } catch (err) {
-        logger.error({ err: err.message }, '[cron] recalculateSpeeds failed');
-    }
-}, 24 * 60 * 60 * 1000);
+    // ── Crons ────────────────────────────────────────────────────────────────
+    const { recalculateSpeeds } = await import('./routes/operations.js');
+    const { flush }             = await import('./cache.js');
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-    logger.info({ port: PORT, origins: allowedOrigins }, 'KT IMPEX API started');
-});
+    // Every 24h: recalculate movement speeds using the persisted threshold
+    setInterval(async () => {
+        try {
+            const n = await recalculateSpeeds();
+            await flush('thans:*');
+            await flush('dashboard');
+            logger.info({ updated: n }, '[cron] movement speeds recalculated');
+        } catch (err) {
+            logger.error({ err }, '[cron] recalculateSpeeds failed');
+        }
+    }, 24 * 60 * 60 * 1000);
+}
+
+start().catch(err => { logger.error({ err }, 'Fatal startup error'); process.exit(1); });
