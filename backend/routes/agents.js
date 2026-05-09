@@ -2,19 +2,18 @@
 // Phase 4 / Phase 6: Technical Foundation + AI Memory Design
 //
 // Phase 6 Task 1: scopeGuard applied to all memory endpoints
-//   - project-scope: everyone reads, admin writes only
-//   - user-scope: own memory only (admin can access any)
-//   - local-scope: admin only
+// Phase 6 Task 2: GET /api/agents/retailer/search — semantic search
+// Phase 6 Task 3: 'quotation-summary' added to VALID_AGENTS
 //
 // Endpoints:
 //   POST /api/agents/query                → single agent dispatch with live DB context
 //   POST /api/agents/procurement          → parallel 3-agent procurement fork
 //   POST /api/agents/spawn                → programmatic agent delegation
+//   GET  /api/agents/retailer/search      → semantic retailer search (Task 2)
 //   GET  /api/agents/memory/:scope        → read a specific agent memory file
 //   GET  /api/agents/memory/:scope/list   → list all memory files in scope
 //   PUT  /api/agents/memory/:scope        → admin: overwrite memory file
 //   POST /api/agents/memory/:scope/append → admin: append to memory file
-//   GET  /api/agents/retailer/search      → Phase 6 Task 2: semantic retailer search
 
 import { Router }             from 'express'
 import { runAgent, spawnAgent } from '../agents/runner/agentRunner.js'
@@ -22,12 +21,16 @@ import { runProcurementFork } from '../agents/runner/forkRunner.js'
 import { readMemory, writeMemorySnapshot, appendMemory, listMemoryFiles } from '../agents/runner/agentMemory.js'
 import { buildLiveContext }   from '../agents/runner/memoryManager.js'
 import { checkPermission }    from '../middleware/checkPermission.js'
-import { assertMemoryScope, scopeGuardMiddleware } from '../middleware/scopeGuard.js'
+import { scopeGuardMiddleware } from '../middleware/scopeGuard.js'
 import logger                 from '../logger.js'
 
 const router = Router()
 
-const VALID_AGENTS = ['inventory', 'retailer', 'procurement', 'warehouse', 'pricing', 'sales', 'coordinator']
+// Task 3: 'quotation-summary' registered as a valid agent
+const VALID_AGENTS = [
+    'inventory', 'retailer', 'procurement', 'warehouse',
+    'pricing', 'sales', 'coordinator', 'quotation-summary',
+]
 
 // ---------------------------------------------------------------------------
 // POST /api/agents/query — single agent dispatch with live DB context injection
@@ -51,7 +54,7 @@ router.post('/query', checkPermission('VIEW_OPERATIONS'), async (req, res) => {
             agentName: agent,
             query,
             context:  mergedContext,
-            username: req.user.username,   // always from JWT — never from body
+            username: req.user.username,
         })
 
         res.json({
@@ -137,15 +140,14 @@ router.post('/spawn', checkPermission('USE_AGENTS'), async (req, res) => {
 })
 
 // ---------------------------------------------------------------------------
-// GET /api/agents/retailer/search — Phase 6 Task 2: semantic retailer search
-// (declared before /:scope routes to avoid Express treating 'retailer' as scope)
+// GET /api/agents/retailer/search — Task 2: semantic retailer search
+// Declared BEFORE /:scope routes so Express doesn’t treat 'retailer' as a scope
 // ---------------------------------------------------------------------------
 router.get('/retailer/search', checkPermission('USE_AGENTS'), async (req, res) => {
     const { q, limit = '5' } = req.query
     if (!q?.trim()) return res.status(400).json({ error: 'q (query) is required' })
 
     try {
-        // Dynamic import so the service only loads if the route is hit
         const { searchRetailers } = await import('../services/embeddingService.js')
         const results = await searchRetailers(q.trim(), parseInt(limit, 10))
         res.json({ query: q, results })
@@ -157,7 +159,7 @@ router.get('/retailer/search', checkPermission('USE_AGENTS'), async (req, res) =
 
 // ---------------------------------------------------------------------------
 // GET /api/agents/memory/:scope — read a specific agent memory file
-// Phase 6 Task 1: scopeGuard enforced
+// Task 1: scopeGuard enforced
 // ---------------------------------------------------------------------------
 router.get(
     '/memory/:scope',
@@ -182,7 +184,7 @@ router.get(
 
 // ---------------------------------------------------------------------------
 // GET /api/agents/memory/:scope/list
-// Phase 6 Task 1: scopeGuard enforced
+// Task 1: scopeGuard enforced
 // ---------------------------------------------------------------------------
 router.get(
     '/memory/:scope/list',
@@ -203,7 +205,7 @@ router.get(
 
 // ---------------------------------------------------------------------------
 // PUT /api/agents/memory/:scope — overwrite a memory file
-// Phase 6 Task 1: scopeGuard enforced (project = admin-write only)
+// Task 1: scopeGuard enforced (project-scope = admin-write only)
 // ---------------------------------------------------------------------------
 router.put(
     '/memory/:scope',
@@ -230,7 +232,7 @@ router.put(
 
 // ---------------------------------------------------------------------------
 // POST /api/agents/memory/:scope/append
-// Phase 6 Task 1: scopeGuard enforced
+// Task 1: scopeGuard enforced
 // ---------------------------------------------------------------------------
 router.post(
     '/memory/:scope/append',

@@ -1,14 +1,11 @@
 // memoryManager.js — Live DB → Agent Memory injection layer
 // Phase 6: AI Memory Design
 //
-// Problem: agents run on static .MEMORY.md seed files only.
-// Solution: before dispatching an agent, call buildLiveContext(agentName, db)
-// to fetch fresh DB snapshots and inject them as structured context strings.
-//
-// Usage in routes/agents.js:
-//   import { buildLiveContext } from '../agents/runner/memoryManager.js'
-//   const liveCtx = await buildLiveContext(agentName, db)
-//   const result  = await runAgent({ agentName, query, context: liveCtx, username })
+// Phase 6 Task 3 update:
+//   - Added 'quotation-summary' case to buildLiveContext()
+//   - _quotationSummaryContext() builds a structured snapshot from:
+//       quotations, quotation_items, customers, products, thans
+//   - No valid_until column used (not present in current schema per quotations.js)
 //
 // This keeps .MEMORY.md as domain knowledge (heuristics, rules, history)
 // and liveContext as operational snapshot (current numbers, today's data).
@@ -16,29 +13,26 @@
 /**
  * buildLiveContext(agentName, db)
  *
- * Returns a compact context string tailored to the agent type.
- * Queries are intentionally lightweight (no JOINs over full tables).
- * All queries use parameterized form — no string interpolation.
- *
  * @param {string} agentName - one of: inventory, retailer, procurement,
- *                              warehouse, pricing, sales, coordinator
+ *                              warehouse, pricing, sales, coordinator,
+ *                              quotation-summary
  * @param {object} db        - MariaDB pool (from db.js)
  * @returns {Promise<string>}
  */
 export async function buildLiveContext(agentName, db) {
     try {
         switch (agentName) {
-            case 'inventory':   return await _inventoryContext(db)
-            case 'retailer':    return await _retailerContext(db)
-            case 'procurement': return await _procurementContext(db)
-            case 'warehouse':   return await _warehouseContext(db)
-            case 'pricing':     return await _pricingContext(db)
-            case 'sales':       return await _salesContext(db)
-            case 'coordinator': return await _coordinatorContext(db)
-            default:            return ''
+            case 'inventory':          return await _inventoryContext(db)
+            case 'retailer':           return await _retailerContext(db)
+            case 'procurement':        return await _procurementContext(db)
+            case 'warehouse':          return await _warehouseContext(db)
+            case 'pricing':            return await _pricingContext(db)
+            case 'sales':              return await _salesContext(db)
+            case 'coordinator':        return await _coordinatorContext(db)
+            case 'quotation-summary':  return await _quotationSummaryContext(db)
+            default:                   return ''
         }
     } catch (err) {
-        // Never crash the agent call due to a DB error in context building
         console.error(`[memoryManager] buildLiveContext(${agentName}) failed:`, err.message)
         return `(live context unavailable: ${err.message})`
     }
@@ -345,7 +339,7 @@ async function _salesContext(db) {
 
     const pendingQuotes = await db.query(`
         SELECT q.quotation_number, c.customer_name,
-               q.total_amount, q.status, q.valid_until, q.created_at
+               q.total_amount, q.status, q.created_at
         FROM quotations q
         JOIN customers c ON q.customer_id = c.customer_id
         WHERE q.status IN ('draft', 'sent')
@@ -366,7 +360,7 @@ async function _salesContext(db) {
         '### Pending Quotations',
         pendingQuotes.length
             ? pendingQuotes.map(r =>
-                `- ${r.quotation_number} | ${r.customer_name} | ₹${r.total_amount} | status: ${r.status} | valid until: ${_dateStr(r.valid_until)}`
+                `- ${r.quotation_number} | ${r.customer_name} | ₹${r.total_amount} | status: ${r.status} | created: ${_dateStr(r.created_at)}`
               )
             : ['- No pending quotations.'],
     ].flat()
@@ -396,6 +390,122 @@ async function _coordinatorContext(db) {
         '',
         price,
     ].join('\n')
+}
+
+// ---------------------------------------------------------------------------
+// Quotation Summary Agent — Phase 6 Task 3
+// ---------------------------------------------------------------------------
+async function _quotationSummaryContext(db) {
+    // 1. Aggregate stats per status
+    const statusStats = await db.query(`
+        SELECT status,
+               COUNT(*)                   AS count,
+               ROUND(SUM(total_amount), 2) AS total_value,
+               ROUND(AVG(total_amount), 2) AS avg_value,
+               ROUND(AVG(DATEDIFF(NOW(), created_at)), 1) AS avg_age_days
+        FROM quotations
+        GROUP BY status
+        ORDER BY FIELD(status, 'draft', 'sent', 'accepted', 'declined')
+    `)
+
+    // 2. Per-customer summary: open value + decline count + latest quotation
+    const customerStats = await db.query(`
+        SELECT c.customer_name,
+               COUNT(q.quotation_id)                              AS total_quotes,
+               ROUND(SUM(CASE WHEN q.status IN ('draft','sent')
+                    THEN q.total_amount ELSE 0 END), 2)           AS open_value,
+               SUM(CASE WHEN q.status = 'declined' THEN 1 ELSE 0 END) AS decline_count,
+               SUM(CASE WHEN q.status = 'accepted' THEN 1 ELSE 0 END) AS accept_count,
+               MAX(q.created_at)                                  AS last_quote_date
+        FROM quotations q
+        JOIN customers c ON q.customer_id = c.customer_id
+        GROUP BY q.customer_id
+        ORDER BY open_value DESC
+        LIMIT 15
+    `)
+
+    // 3. Product mix: which products appear most in quotation_items
+    const productMix = await db.query(`
+        SELECT COALESCE(p.product_name, 'Unknown') AS product_name,
+               COALESCE(th.fabric_type, 'N/A')     AS fabric_type,
+               COUNT(qi.item_id)                   AS times_quoted,
+               ROUND(AVG(qi.unit_price_at_time), 2) AS avg_quoted_price,
+               ROUND(AVG(th.selling_price), 2)      AS avg_current_price
+        FROM quotation_items qi
+        LEFT JOIN products p  ON qi.product_id = p.product_id
+        LEFT JOIN thans    th ON qi.than_id     = th.than_id
+        GROUP BY qi.product_id, th.fabric_type
+        ORDER BY times_quoted DESC
+        LIMIT 10
+    `)
+
+    // 4. High-risk: customer has outstanding_balance > 0 AND open quotation
+    const riskRows = await db.query(`
+        SELECT c.customer_name,
+               q.quotation_number, q.status, q.total_amount,
+               q.created_at,
+               DATEDIFF(NOW(), q.created_at)        AS age_days
+        FROM quotations q
+        JOIN customers  c ON q.customer_id = c.customer_id
+        LEFT JOIN retailers r ON r.contact_person = c.customer_name
+        WHERE q.status IN ('draft', 'sent')
+          AND (r.outstanding_balance > 0)
+        ORDER BY r.outstanding_balance DESC
+        LIMIT 10
+    `)
+
+    // 5. Draft quotes older than 7 days (stale / forgotten)
+    const staleDrafts = await db.query(`
+        SELECT q.quotation_number, c.customer_name,
+               q.total_amount,
+               DATEDIFF(NOW(), q.created_at) AS age_days
+        FROM quotations q
+        JOIN customers c ON q.customer_id = c.customer_id
+        WHERE q.status = 'draft'
+          AND DATEDIFF(NOW(), q.created_at) > 7
+        ORDER BY age_days DESC
+        LIMIT 10
+    `)
+
+    const lines = [
+        `## Live Quotation Summary Context — ${_today()}`,
+        '',
+        '### Status Breakdown',
+        statusStats.length
+            ? statusStats.map(r =>
+                `- ${r.status}: ${r.count} quotes | total ₹${r.total_value} | avg ₹${r.avg_value} | avg age ${r.avg_age_days} days`
+              )
+            : ['- No quotation records found.'],
+        '',
+        '### Customer Summary (top 15 by open value)',
+        customerStats.length
+            ? customerStats.map(r =>
+                `- ${r.customer_name}: ${r.total_quotes} quotes | open ₹${r.open_value} | accepted=${r.accept_count} declined=${r.decline_count} | last: ${_dateStr(r.last_quote_date)}`
+              )
+            : ['- No customer quotation data.'],
+        '',
+        '### Product Mix (top 10 by quote frequency)',
+        productMix.length
+            ? productMix.map(r =>
+                `- ${r.product_name} [${r.fabric_type}]: quoted ${r.times_quoted}x | avg quoted price ₹${r.avg_quoted_price}/m | current price ₹${r.avg_current_price}/m`
+              )
+            : ['- No quotation item data.'],
+        '',
+        '### High-Risk Open Quotations (customer has outstanding balance)',
+        riskRows.length
+            ? riskRows.map(r =>
+                `⚠️ ${r.quotation_number} | ${r.customer_name} | ₹${r.total_amount} | status: ${r.status} | ${r.age_days} days old`
+              )
+            : ['- No high-risk open quotations.'],
+        '',
+        '### Stale Drafts (> 7 days old)',
+        staleDrafts.length
+            ? staleDrafts.map(r =>
+                `- ${r.quotation_number} | ${r.customer_name} | ₹${r.total_amount} | ${r.age_days} days stale`
+              )
+            : ['- No stale drafts.'],
+    ].flat()
+    return lines.join('\n')
 }
 
 // ---------------------------------------------------------------------------
