@@ -3,6 +3,7 @@
 -- Phase 5 database fixes — run ONCE on your MariaDB instance
 -- Safe to re-run: ADD COLUMN IF NOT EXISTS guards used throughout.
 -- FK constraints use DROP IF EXISTS + ADD pattern (MariaDB <10.5 compat).
+-- ORDER: columns added BEFORE indexes that reference them.
 -- =============================================================================
 
 -- ── Fix #1: quotation_number column ──────────────────────────────────────────
@@ -24,7 +25,6 @@ ALTER TABLE transactions
         COMMENT 'Denormalised from thans.product_id at sale time for analytics joins.'
         AFTER retailer_id;
 
--- FK: drop first (ignore error if it doesn't exist), then add
 ALTER TABLE transactions
     DROP FOREIGN KEY IF EXISTS fk_transactions_product;
 
@@ -33,32 +33,7 @@ ALTER TABLE transactions
         FOREIGN KEY (product_id) REFERENCES products(product_id)
         ON DELETE SET NULL;
 
--- ── Fix #5: critical indexes ──────────────────────────────────────────────────
-CREATE INDEX IF NOT EXISTS idx_tx_retailer_date
-    ON transactions (retailer_id, transaction_date);
-
-CREATE INDEX IF NOT EXISTS idx_tx_product
-    ON transactions (product_id);
-
-CREATE INDEX IF NOT EXISTS idx_im_than_date
-    ON inventory_movements (than_id, movement_date);
-
-CREATE INDEX IF NOT EXISTS idx_im_type
-    ON inventory_movements (movement_type);
-
-CREATE INDEX IF NOT EXISTS idx_thans_speed_status
-    ON thans (movement_speed, status);
-
-CREATE INDEX IF NOT EXISTS idx_thans_stock
-    ON thans (remaining_stock);
-
-CREATE INDEX IF NOT EXISTS idx_retailers_deleted
-    ON retailers (is_deleted);
-
-CREATE INDEX IF NOT EXISTS idx_suppliers_deleted
-    ON suppliers (is_deleted);
-
--- ── Fix #7: soft-delete columns on retailers + suppliers ─────────────────────
+-- ── Fix #7: soft-delete columns — MUST come before indexes below ────────────────
 ALTER TABLE retailers
     ADD COLUMN IF NOT EXISTS is_deleted  TINYINT(1) NOT NULL DEFAULT 0
         COMMENT 'Soft delete flag. 1 = deleted.' AFTER outstanding_balance,
@@ -87,10 +62,37 @@ ALTER TABLE retailers
         FOREIGN KEY (assigned_user_id) REFERENCES users(user_id)
         ON DELETE SET NULL;
 
+-- ── Fix #5: critical indexes — all columns exist by this point ─────────────────
+CREATE INDEX IF NOT EXISTS idx_tx_retailer_date
+    ON transactions (retailer_id, transaction_date);
+
+CREATE INDEX IF NOT EXISTS idx_tx_product
+    ON transactions (product_id);
+
+CREATE INDEX IF NOT EXISTS idx_im_than_date
+    ON inventory_movements (than_id, movement_date);
+
+CREATE INDEX IF NOT EXISTS idx_im_type
+    ON inventory_movements (movement_type);
+
+CREATE INDEX IF NOT EXISTS idx_thans_speed_status
+    ON thans (movement_speed, status);
+
+CREATE INDEX IF NOT EXISTS idx_thans_stock
+    ON thans (remaining_stock);
+
+-- soft-delete indexes (columns added above in Fix #7)
+CREATE INDEX IF NOT EXISTS idx_retailers_deleted
+    ON retailers (is_deleted);
+
+CREATE INDEX IF NOT EXISTS idx_suppliers_deleted
+    ON suppliers (is_deleted);
+
+-- assigned_user_id index (column added above in Fix #9)
 CREATE INDEX IF NOT EXISTS idx_retailers_assigned_user
     ON retailers (assigned_user_id);
 
--- ── Fix #10: embeddings table for Phase 6 vector/semantic search ──────────────
+-- ── Fix #10: embeddings table for Phase 6 ─────────────────────────────────────
 CREATE TABLE IF NOT EXISTS retailer_embeddings (
     embedding_id    INT          NOT NULL AUTO_INCREMENT PRIMARY KEY,
     retailer_id     INT          NOT NULL,
