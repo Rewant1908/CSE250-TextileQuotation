@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import API from '../api'
 
 const STATUS_COLORS = {
@@ -76,7 +76,6 @@ export default function QuotationHistory({ user }) {
                         {quotations.map(q => {
                             const sc = STATUS_COLORS[q.status] || STATUS_COLORS.pending
                             return (
-                                // key on Fragment, not on inner <tr>
                                 <React.Fragment key={q.quotation_id}>
                                     <tr>
                                         <td>#{q.quotation_id}</td>
