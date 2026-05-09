@@ -1,7 +1,8 @@
 /**
  * server.js — KT IMPEX API entry point
  *
- * Phase 7: /api/admin/settings route registered
+ * Phase 7:  /api/admin/settings route registered
+ * Phase 8:  /api/whatsapp route registered + rawBody middleware for Meta signature verification
  * Fix: dotenv is loaded via --import ./load-env.js (see package.json start script)
  *      so all process.env vars are available before any ES module import runs.
  */
@@ -24,6 +25,7 @@ import settingsRouter   from './routes/settings.js';
 import analyticsRouter  from './routes/analytics.js';
 import balesRouter      from './routes/bales.js';
 import quotationsRouter from './routes/quotations.js';
+import whatsappRouter   from './routes/whatsapp.js';
 
 // ── App ───────────────────────────────────────────────────────────────────────
 const app  = express();
@@ -31,7 +33,19 @@ const PORT = process.env.PORT || 5000;
 
 // ── Security & parsing ────────────────────────────────────────────────────────
 app.use(helmet({ contentSecurityPolicy: false }));
+
+// Phase 8: capture rawBody buffer before JSON parsing.
+// Required for Meta X-Hub-Signature-256 HMAC verification.
+// Must be registered BEFORE express.json().
+app.use((req, _res, next) => {
+    let data = [];
+    req.on('data', chunk => data.push(chunk));
+    req.on('end',  () => { req.rawBody = Buffer.concat(data); next(); });
+    req.on('error', next);
+});
+
 app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true }));  // Phase 8: some webhook senders use form-encoded
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
 const ALLOWED = [
@@ -63,6 +77,7 @@ app.use('/api/admin',                  operationsRouter);
 app.use('/api/operations',             operationsRouter);
 app.use('/api/thans',                  operationsRouter);
 app.use('/api/inventory',              operationsRouter);
+app.use('/api/whatsapp',               whatsappRouter);  // Phase 8
 
 // ── Health ────────────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
