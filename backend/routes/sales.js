@@ -1,13 +1,26 @@
+/**
+ * /api/transactions
+ *
+ * Phase 5 fixes applied:
+ *  2. Dead-stock threshold unified: 60 days (was 60 here, 90 in recalculateSpeeds — now both 60)
+ *  4. product_id added to transactions INSERT (was missing — caused NULL product_id on every sale)
+ */
 import express from 'express';
 import pool from '../db.js';
 import { checkPermission } from '../middleware/checkPermission.js';
 import { del } from '../cache.js';
+import logger from '../logger.js';
 
 const router = express.Router();
 
+// ─── DEAD_DAYS constant — single source of truth ─────────────────────────────
+// Phase 5 fix #2: was 60 here vs 90 in recalculateSpeeds — unified to 60.
+// The DB trigger and recalculateSpeeds() in operations.js also use this threshold.
+export const DEAD_DAYS = 60;
+
 // ─── movement_speed classifier ───────────────────────────────────────────────
 // Called after every sale. Reads the than's full history and re-classifies:
-//   dead   : remaining_stock > 0  AND  no stock_out in 60+ days
+//   dead   : remaining_stock > 0  AND  no stock_out in 60+ days  (DEAD_DAYS)
 //   slow   : last sale was 30–59 days ago
 //   medium : last sale was 8–29 days ago
 //   fast   : last sale was within 7 days
@@ -19,7 +32,6 @@ async function refreshMovementSpeed(conn, thanId) {
     );
     if (!than) return;
 
-    // Find the most recent stock_out
     const [lastOut] = await conn.query(
         `SELECT MAX(movement_date) AS last_out
          FROM inventory_movements
@@ -29,7 +41,6 @@ async function refreshMovementSpeed(conn, thanId) {
 
     const remaining = Number(than.remaining_stock);
 
-    // Already fully sold out
     if (remaining <= 0) {
         await conn.query(
             `UPDATE thans SET movement_speed = 'fast', status = 'sold_out' WHERE than_id = ?`,
@@ -39,7 +50,6 @@ async function refreshMovementSpeed(conn, thanId) {
     }
 
     if (!lastOut?.last_out) {
-        // Never sold — stay 'new'
         await conn.query(
             `UPDATE thans SET movement_speed = 'new' WHERE than_id = ?`,
             [thanId]
@@ -52,10 +62,10 @@ async function refreshMovementSpeed(conn, thanId) {
     );
 
     let speed;
-    if (daysSinceLastSale >= 60)      speed = 'dead';
-    else if (daysSinceLastSale >= 30) speed = 'slow';
-    else if (daysSinceLastSale >= 8)  speed = 'medium';
-    else                               speed = 'fast';
+    if (daysSinceLastSale >= DEAD_DAYS) speed = 'dead';   // Phase 5 fix #2: was hardcoded 60
+    else if (daysSinceLastSale >= 30)   speed = 'slow';
+    else if (daysSinceLastSale >= 8)    speed = 'medium';
+    else                                speed = 'fast';
 
     await conn.query(
         'UPDATE thans SET movement_speed = ? WHERE than_id = ?',
@@ -69,14 +79,16 @@ router.get('/', checkPermission('VIEW_OPERATIONS'), async (req, res) => {
     try {
         conn = await pool.getConnection();
         const rows = await conn.query(
-            `SELECT tx.transaction_id, tx.than_id, tx.retailer_id,
+            `SELECT tx.transaction_id, tx.than_id, tx.retailer_id, tx.product_id,
                     tx.transaction_date AS sale_date,
                     tx.quantity, tx.price, tx.discount, tx.margin,
                     tx.payment_status, tx.notes,
                     t.than_code, t.fabric_type, t.color, t.design,
+                    p.product_name, p.category,
                     r.shop_name, r.market_location
              FROM transactions tx
-             LEFT JOIN thans t     ON tx.than_id     = t.than_id
+             LEFT JOIN thans    t ON tx.than_id     = t.than_id
+             LEFT JOIN products p ON tx.product_id  = p.product_id
              LEFT JOIN retailers r ON tx.retailer_id = r.retailer_id
              ORDER BY tx.transaction_date DESC, tx.transaction_id DESC
              LIMIT 200`
@@ -102,8 +114,11 @@ router.post('/', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
         conn = await pool.getConnection();
         await conn.beginTransaction();
 
+        // Phase 5 fix #4: fetch product_id from thans so it is never NULL in transactions
         const [than] = await conn.query(
-            'SELECT than_id, remaining_stock, cost_per_meter, warehouse_location FROM thans WHERE than_id = ?',
+            `SELECT than_id, remaining_stock, cost_per_meter,
+                    warehouse_location, product_id
+             FROM thans WHERE than_id = ?`,
             [than_id]
         );
         if (!than) { await conn.rollback(); return res.status(404).json({ error: 'Than not found' }); }
@@ -114,30 +129,31 @@ router.post('/', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
             });
         }
 
-        const disc   = Number(discount || 0);
-        const margin = (Number(price) - Number(than.cost_per_meter)) * Number(quantity) - disc;
+        const disc    = Number(discount || 0);
+        const margin  = (Number(price) - Number(than.cost_per_meter)) * Number(quantity) - disc;
         const pStatus = payment_status || 'paid';
         const txDate  = sale_date || new Date().toISOString().slice(0, 10);
 
+        // Phase 5 fix #4: product_id column is now included in INSERT
         const result = await conn.query(
             `INSERT INTO transactions
-                (than_id, retailer_id, transaction_date, quantity, price, discount,
-                 margin, payment_status, notes)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                (than_id, product_id, retailer_id, transaction_date,
+                 quantity, price, discount, margin, payment_status, notes)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
-                than_id, retailer_id || null, txDate,
+                than_id,
+                than.product_id || null,    // ← was missing; caused NULL product_id on all sales
+                retailer_id || null, txDate,
                 Number(quantity), Number(price), disc,
                 margin, pStatus, notes?.trim() || null
             ]
         );
 
-        // Decrement remaining stock
         await conn.query(
             'UPDATE thans SET remaining_stock = remaining_stock - ? WHERE than_id = ?',
             [Number(quantity), than_id]
         );
 
-        // Log inventory movement
         await conn.query(
             `INSERT INTO inventory_movements
                 (than_id, movement_type, quantity, from_location, to_location,
@@ -151,10 +167,8 @@ router.post('/', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
             ]
         );
 
-        // ── Re-classify movement_speed based on updated history ──────────────
         await refreshMovementSpeed(conn, than_id);
 
-        // Auto-update outstanding_balance for credit/mixed payment retailers
         if (retailer_id && pStatus !== 'paid') {
             const saleTotal = Number(price) * Number(quantity) - disc;
             await conn.query(
@@ -166,13 +180,12 @@ router.post('/', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
         }
 
         await conn.commit();
-
-        // Bust dashboard cache so the next load reflects this new sale
         del('dashboard').catch(() => {});
 
         res.status(201).json({ success: true, transaction_id: Number(result.insertId), margin });
     } catch (err) {
         if (conn) await conn.rollback();
+        logger.error({ err }, '[transactions] POST /');
         res.status(500).json({ error: err.message });
     } finally { if (conn) conn.release(); }
 });

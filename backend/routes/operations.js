@@ -1,12 +1,22 @@
+/**
+ * /api/operations, /api/thans, /api/inventory
+ *
+ * Phase 5 fixes applied:
+ *  2. recalculateSpeeds() dead threshold changed from 90 → DEAD_DAYS (60)
+ *     import DEAD_DAYS from sales.js — single source of truth across all classifiers
+ *  6. POST /api/thans/:id/image — image_url upload endpoint (base64 or URL body)
+ */
 import express from 'express';
 import pool from '../db.js';
 import { checkPermission } from '../middleware/checkPermission.js';
 import { cache, invalidate } from '../middleware/cacheMiddleware.js';
 import { flush } from '../cache.js';
+import { DEAD_DAYS } from './sales.js';   // Phase 5 fix #2: single source of truth
+import logger from '../logger.js';
 
 const router = express.Router();
 
-// ── GET /api/thans (global search, cached 30s) ──────────────────────────────────
+// ── GET /api/thans ─────────────────────────────────────────────────────────────
 router.get('/thans',
     checkPermission('VIEW_OPERATIONS'),
     cache((req) => `thans:${JSON.stringify(req.query)}`, 30),
@@ -30,6 +40,7 @@ router.get('/thans',
                 `SELECT t.than_id, t.than_code, t.bale_id, t.fabric_type, t.color, t.design,
                         t.gsm, t.meter_length, t.remaining_stock, t.cost_per_meter,
                         t.selling_price, t.warehouse_location, t.movement_speed, t.status,
+                        t.image_url,
                         ROUND(t.selling_price - t.cost_per_meter, 2) AS margin_per_meter,
                         p.product_name, p.category,
                         b.bale_code, b.arrival_date
@@ -55,7 +66,43 @@ router.get('/thans',
     }
 );
 
-// ── GET /api/operations/dashboard (cached 60s) ────────────────────────────────
+// ── POST /api/thans/:id/image ────────────────────────────────────────────────
+// Phase 5 fix #6: image_url upload endpoint — accepts { image_url: 'https://...' }
+// or a base64 data URI. The WhatsApp integration will POST the CDN URL here.
+router.post('/thans/:id/image', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
+    const { image_url } = req.body;
+    const thanId = Number(req.params.id);
+
+    if (!image_url?.trim()) {
+        return res.status(400).json({ error: 'image_url is required' });
+    }
+    // Basic sanity: must be a URL or data URI
+    const isUrl    = /^https?:\/\//i.test(image_url);
+    const isBase64 = /^data:image\//i.test(image_url);
+    if (!isUrl && !isBase64) {
+        return res.status(400).json({ error: 'image_url must be a https:// URL or data:image/ URI' });
+    }
+
+    let conn;
+    try {
+        conn = await pool.getConnection();
+        const result = await conn.query(
+            'UPDATE thans SET image_url = ? WHERE than_id = ?',
+            [image_url.trim(), thanId]
+        );
+        if (Number(result.affectedRows) === 0) {
+            return res.status(404).json({ error: 'Than not found' });
+        }
+        // Bust the thans cache so the new image is immediately visible
+        flush('thans:*').catch(() => {});
+        res.json({ success: true, than_id: thanId, image_url: image_url.trim() });
+    } catch (err) {
+        logger.error({ err }, '[thans] POST /:id/image');
+        res.status(500).json({ error: err.message });
+    } finally { if (conn) conn.release(); }
+});
+
+// ── GET /api/operations/dashboard ────────────────────────────────────────────
 router.get('/dashboard',
     checkPermission('VIEW_OPERATIONS'),
     cache('dashboard', 60),
@@ -106,6 +153,7 @@ router.get('/dashboard',
                 `SELECT
                     t.than_id, t.than_code, t.fabric_type, t.color, t.design,
                     t.remaining_stock, t.cost_per_meter, t.selling_price,
+                    t.image_url,
                     ROUND(t.remaining_stock * t.cost_per_meter, 2) AS cost_value,
                     t.warehouse_location, t.movement_speed,
                     DATEDIFF(CURDATE(),
@@ -117,7 +165,7 @@ router.get('/dashboard',
                  GROUP BY
                     t.than_id, t.than_code, t.fabric_type, t.color, t.design,
                     t.remaining_stock, t.cost_per_meter, t.selling_price,
-                    t.warehouse_location, t.movement_speed, t.created_at
+                    t.image_url, t.warehouse_location, t.movement_speed, t.created_at
                  ORDER BY
                     CASE t.movement_speed
                         WHEN 'dead' THEN 0
@@ -129,13 +177,11 @@ router.get('/dashboard',
                  LIMIT 15`
             );
 
-            // transactions columns: transaction_id, retailer_id, quotation_id, than_id,
-            // product_id, quantity, price, discount, payment_method, margin, transaction_date
-            // Revenue = (price * quantity) - discount
             const retailerSignals = await conn.query(
                 `SELECT
                     r.retailer_id, r.shop_name, r.market_location, r.payment_pattern,
                     r.preferred_categories, r.preferred_price_segment, r.outstanding_balance,
+                    r.preferred_categories_json,
                     COUNT(tx.transaction_id)                                   AS order_count,
                     COALESCE(SUM(tx.quantity), 0)                              AS meters_bought,
                     COALESCE(SUM(tx.price * tx.quantity - tx.discount), 0)     AS revenue,
@@ -144,7 +190,8 @@ router.get('/dashboard',
                  LEFT JOIN transactions tx ON r.retailer_id = tx.retailer_id
                  GROUP BY
                     r.retailer_id, r.shop_name, r.market_location, r.payment_pattern,
-                    r.preferred_categories, r.preferred_price_segment, r.outstanding_balance
+                    r.preferred_categories, r.preferred_price_segment, r.outstanding_balance,
+                    r.preferred_categories_json
                  ORDER BY revenue DESC, meters_bought DESC
                  LIMIT 8`
             );
@@ -175,7 +222,7 @@ router.get('/dashboard',
     }
 );
 
-// ── GET /api/inventory/search ───────────────────────────────────────────────────
+// ── GET /api/inventory/search ─────────────────────────────────────────────────
 router.get('/inventory/search', async (req, res) => {
     const q        = String(req.query.q || '').trim();
     const maxPrice = req.query.max_price ? Number(req.query.max_price) : null;
@@ -202,7 +249,7 @@ router.get('/inventory/search', async (req, res) => {
         const rows = await conn.query(
             `SELECT t.than_id, t.than_code, t.fabric_type, t.color, t.design,
                     t.gsm, t.remaining_stock, t.selling_price, t.cost_per_meter,
-                    t.warehouse_location, t.movement_speed,
+                    t.warehouse_location, t.movement_speed, t.image_url,
                     ROUND(t.selling_price - t.cost_per_meter, 2) AS margin_per_meter,
                     p.product_name, p.category
              FROM thans t
@@ -253,11 +300,12 @@ async function recalculateSpeeds() {
             const idle  = Number(row.idle_days  || 0);
             const sales = Number(row.sale_count || 0);
             let speed;
-            if (sales === 0)     speed = 'new';
-            else if (idle >= 90) speed = 'dead';
-            else if (idle >= 45) speed = 'slow';
-            else if (idle >= 14) speed = 'medium';
-            else                 speed = 'fast';
+            // Phase 5 fix #2: was >= 90 (now DEAD_DAYS = 60, matching sales.js and DB trigger)
+            if (sales === 0)           speed = 'new';
+            else if (idle >= DEAD_DAYS) speed = 'dead';
+            else if (idle >= 30)        speed = 'slow';
+            else if (idle >= 8)         speed = 'medium';
+            else                        speed = 'fast';
             await conn.query('UPDATE thans SET movement_speed = ? WHERE than_id = ?', [speed, row.than_id]);
             updated++;
         }

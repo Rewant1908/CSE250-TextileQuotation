@@ -1,8 +1,16 @@
 /**
  * /api/quotations
  *
- * Actual schema columns (verified against database/schema.sql):
- *   quotations      : quotation_id, customer_id, user_id, status,
+ * Phase 5 fixes applied:
+ *  1. quotation_number column: auto-generated as KTQ-{YYYY}-{6-digit-padded-id}
+ *     written back after INSERT (MariaDB has no GENERATED ALWAYS for non-trivial exprs)
+ *  2. status ENUM extended: draft | sent | accepted | declined
+ *     (old: pending | accepted | declined  — 'pending' kept as alias for 'draft' on reads)
+ *  8. quotations.status lifecycle now matches sales.MEMORY.md:
+ *     draft → sent → accepted / declined
+ *
+ * Schema columns (verified + extended):
+ *   quotations      : quotation_id, quotation_number, customer_id, user_id, status,
  *                     total_amount, decline_reason, created_at, updated_at
  *   quotation_items : item_id, quotation_id, product_id, than_id,
  *                     quantity, unit_price_at_time
@@ -12,50 +20,42 @@
 import { Router } from 'express';
 import pool from '../db.js';
 import { checkPermission } from '../middleware/checkPermission.js';
+import logger from '../logger.js';
 
 const router = Router();
+
+// Valid lifecycle statuses — matches sales.MEMORY.md draft→sent→accepted/declined
+const VALID_STATUSES = ['draft', 'sent', 'accepted', 'declined'];
+// backward-compat alias: the old ENUM used 'pending' — treat it as 'draft'
+function normaliseStatus(s) {
+    return s === 'pending' ? 'draft' : s;
+}
 
 // ── GET /api/quotations ───────────────────────────────────────────────────────
 router.get('/', checkPermission('VIEW_QUOTATIONS'), async (req, res) => {
     let conn;
     try {
         conn = await pool.getConnection();
-
-        let rows;
-        if (req.user.role === 'admin') {
-            rows = await conn.query(`
-                SELECT q.quotation_id,
-                       q.user_id,
-                       c.customer_name,
-                       c.contact_phone,
-                       q.total_amount,
-                       q.status,
-                       q.decline_reason,
-                       q.created_at
+        const rows = req.user.role === 'admin'
+            ? await conn.query(`
+                SELECT q.quotation_id, q.quotation_number,
+                       q.user_id, c.customer_name, c.contact_phone,
+                       q.total_amount, q.status, q.decline_reason, q.created_at
                 FROM quotations q
                 LEFT JOIN customers c ON c.customer_id = q.customer_id
-                ORDER BY q.created_at DESC
-            `);
-        } else {
-            rows = await conn.query(`
-                SELECT q.quotation_id,
-                       q.user_id,
-                       c.customer_name,
-                       c.contact_phone,
-                       q.total_amount,
-                       q.status,
-                       q.decline_reason,
-                       q.created_at
+                ORDER BY q.created_at DESC`)
+            : await conn.query(`
+                SELECT q.quotation_id, q.quotation_number,
+                       q.user_id, c.customer_name, c.contact_phone,
+                       q.total_amount, q.status, q.decline_reason, q.created_at
                 FROM quotations q
                 LEFT JOIN customers c ON c.customer_id = q.customer_id
                 WHERE q.user_id = ?
-                ORDER BY q.created_at DESC
-            `, [req.user.user_id]);
-        }
+                ORDER BY q.created_at DESC`, [req.user.user_id]);
 
-        res.json(rows);
+        res.json(rows.map(r => ({ ...r, status: normaliseStatus(r.status) })));
     } catch (err) {
-        console.error('[quotations] GET / error:', err.message);
+        logger.error({ err }, '[quotations] GET /');
         res.status(500).json({ success: false, error: err.message });
     } finally { if (conn) conn.release(); }
 });
@@ -65,45 +65,33 @@ router.get('/:id', checkPermission('VIEW_QUOTATIONS'), async (req, res) => {
     let conn;
     try {
         conn = await pool.getConnection();
-
         const [quotation] = await conn.query(`
-            SELECT q.quotation_id,
-                   q.user_id,
-                   q.customer_id,
-                   c.customer_name,
-                   c.contact_phone,
-                   q.total_amount,
-                   q.status,
-                   q.decline_reason,
-                   q.created_at
+            SELECT q.quotation_id, q.quotation_number,
+                   q.user_id, q.customer_id,
+                   c.customer_name, c.contact_phone,
+                   q.total_amount, q.status, q.decline_reason, q.created_at
             FROM quotations q
             LEFT JOIN customers c ON c.customer_id = q.customer_id
-            WHERE q.quotation_id = ?
-        `, [req.params.id]);
+            WHERE q.quotation_id = ?`, [req.params.id]);
 
         if (!quotation) return res.status(404).json({ error: 'Quotation not found' });
 
-        // Fetch items — join products and thans for display names
         const items = await conn.query(`
-            SELECT qi.item_id,
-                   qi.product_id,
-                   qi.than_id,
+            SELECT qi.item_id, qi.product_id, qi.than_id,
                    COALESCE(p.product_name, 'Unknown Product') AS product_name,
                    COALESCE(t.than_code, '')                   AS than_code,
                    COALESCE(t.fabric_type, '')                 AS fabric_type,
-                   qi.quantity,
-                   qi.unit_price_at_time,
+                   qi.quantity, qi.unit_price_at_time,
                    (qi.quantity * qi.unit_price_at_time)       AS line_total
             FROM quotation_items qi
             LEFT JOIN products p ON p.product_id = qi.product_id
             LEFT JOIN thans    t ON t.than_id    = qi.than_id
             WHERE qi.quotation_id = ?
-            ORDER BY qi.item_id
-        `, [req.params.id]);
+            ORDER BY qi.item_id`, [req.params.id]);
 
-        res.json({ ...quotation, items });
+        res.json({ ...quotation, status: normaliseStatus(quotation.status), items });
     } catch (err) {
-        console.error('[quotations] GET /:id error:', err.message);
+        logger.error({ err }, '[quotations] GET /:id');
         res.status(500).json({ success: false, error: err.message });
     } finally { if (conn) conn.release(); }
 });
@@ -121,7 +109,7 @@ router.post('/', checkPermission('CREATE_QUOTATION'), async (req, res) => {
         conn = await pool.getConnection();
         await conn.beginTransaction();
 
-        // Upsert customer by name
+        // Upsert customer
         let [customer] = await conn.query(
             'SELECT customer_id FROM customers WHERE customer_name = ?',
             [customer_name.trim()]
@@ -137,21 +125,31 @@ router.post('/', checkPermission('CREATE_QUOTATION'), async (req, res) => {
             customer_id = Number(r.insertId);
         }
 
-        // Calculate total
         const total_amount = items.reduce(
-            (sum, i) => sum + (Number(i.quantity) * Number(i.unit_price_at_time || i.unit_price || 0)),
-            0
+            (sum, i) => sum + (Number(i.quantity) * Number(i.unit_price_at_time || i.unit_price || 0)), 0
         );
 
+        // Insert with status 'draft' (lifecycle start per sales.MEMORY.md)
         const result = await conn.query(
-            'INSERT INTO quotations (customer_id, user_id, status, total_amount) VALUES (?, ?, \'pending\', ?)',
+            `INSERT INTO quotations (customer_id, user_id, status, total_amount)
+             VALUES (?, ?, 'draft', ?)`,
             [customer_id, req.user.user_id, total_amount]
         );
         const quotation_id = Number(result.insertId);
 
+        // Generate quotation_number: KTQ-YYYY-000001
+        const year = new Date().getFullYear();
+        const quotation_number = `KTQ-${year}-${String(quotation_id).padStart(6, '0')}`;
+        await conn.query(
+            'UPDATE quotations SET quotation_number = ? WHERE quotation_id = ?',
+            [quotation_number, quotation_id]
+        );
+
         for (const item of items) {
             await conn.query(
-                'INSERT INTO quotation_items (quotation_id, product_id, than_id, quantity, unit_price_at_time) VALUES (?, ?, ?, ?, ?)',
+                `INSERT INTO quotation_items
+                    (quotation_id, product_id, than_id, quantity, unit_price_at_time)
+                 VALUES (?, ?, ?, ?, ?)`,
                 [
                     quotation_id,
                     item.product_id || null,
@@ -163,31 +161,37 @@ router.post('/', checkPermission('CREATE_QUOTATION'), async (req, res) => {
         }
 
         await conn.commit();
-        res.status(201).json({ success: true, quotation_id });
+        res.status(201).json({ success: true, quotation_id, quotation_number });
     } catch (err) {
         if (conn) await conn.rollback();
-        console.error('[quotations] POST / error:', err.message);
+        logger.error({ err }, '[quotations] POST /');
         res.status(500).json({ success: false, error: err.message });
     } finally { if (conn) conn.release(); }
 });
 
 // ── PATCH /api/quotations/:id/status ─────────────────────────────────────────
+// Lifecycle: draft → sent → accepted | declined
 router.patch('/:id/status', checkPermission('MANAGE_QUOTATION_STATUS'), async (req, res) => {
-    const { status, decline_reason = '' } = req.body;
-    const VALID = ['pending', 'accepted', 'declined'];
-    if (!VALID.includes(status)) {
-        return res.status(400).json({ error: `status must be one of: ${VALID.join(', ')}` });
+    const rawStatus      = req.body.status;
+    const decline_reason = req.body.decline_reason || '';
+    const status         = normaliseStatus(rawStatus);
+
+    if (!VALID_STATUSES.includes(status)) {
+        return res.status(400).json({
+            error: `status must be one of: ${VALID_STATUSES.join(', ')} (or 'pending' as alias for 'draft')`
+        });
     }
     let conn;
     try {
         conn = await pool.getConnection();
         await conn.query(
-            'UPDATE quotations SET status = ?, decline_reason = ? WHERE quotation_id = ?',
+            `UPDATE quotations SET status = ?, decline_reason = ?, updated_at = NOW()
+             WHERE quotation_id = ?`,
             [status, decline_reason, req.params.id]
         );
-        res.json({ success: true });
+        res.json({ success: true, status });
     } catch (err) {
-        console.error('[quotations] PATCH /:id/status error:', err.message);
+        logger.error({ err }, '[quotations] PATCH /:id/status');
         res.status(500).json({ success: false, error: err.message });
     } finally { if (conn) conn.release(); }
 });
