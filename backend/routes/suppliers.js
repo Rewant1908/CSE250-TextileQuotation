@@ -1,11 +1,11 @@
 /**
  * /api/suppliers
  *
- * Phase 5 fix #7: soft deletes — DELETE now sets is_deleted=1 + deleted_at
- * instead of hard-deleting (which caused FK constraint errors when thans exist).
- *
- * fix: /full route — joins thans (not bales, which doesn't exist in this schema)
- * fix: SOFT_DELETE_FILTER uses IFNULL so missing column doesn't crash
+ * Actual schema columns:
+ *   supplier_id, supplier_name, factory_name, product_specialization,
+ *   quality_rating, delay_frequency, price_range, popular_categories,
+ *   return_issues, trend_alignment, created_at,
+ *   is_deleted, deleted_at, deleted_by
  */
 import { Router } from 'express';
 import pool from '../db.js';
@@ -14,20 +14,22 @@ import logger from '../logger.js';
 
 const router = Router();
 
-// Safe filter: works whether or not the column exists yet
 const SOFT_DELETE_FILTER = `(IFNULL(s.is_deleted, 0) = 0)`;
 
-// GET /api/suppliers/full — enriched view with than counts for agent + operations dashboard
-// MUST be declared before /:id so Express doesn't treat "full" as an id param
+const SELECT_COLS = `
+    s.supplier_id, s.supplier_name, s.factory_name, s.product_specialization,
+    s.quality_rating, s.delay_frequency, s.price_range, s.popular_categories,
+    s.return_issues, s.trend_alignment, s.created_at`;
+
+// GET /api/suppliers/full — enriched with than counts
+// Must be before /:id so Express doesn't treat "full" as an id param
 router.get('/full', checkPermission('VIEW_OPERATIONS'), async (req, res) => {
     let conn;
     try {
         conn = await pool.getConnection();
         const rows = await conn.query(
-            `SELECT s.supplier_id, s.supplier_name, s.contact_name, s.contact_phone,
-                    s.email, s.city, s.quality_rating, s.delay_frequency,
-                    s.trend_alignment, s.notes, s.created_at,
-                    COUNT(t.than_id)              AS total_thans,
+            `SELECT ${SELECT_COLS},
+                    COUNT(t.than_id)                 AS total_thans,
                     COALESCE(SUM(t.total_meters), 0) AS total_meters
              FROM suppliers s
              LEFT JOIN thans t ON t.supplier_id = s.supplier_id
@@ -47,9 +49,7 @@ router.get('/', checkPermission('VIEW_OPERATIONS'), async (req, res) => {
     try {
         conn = await pool.getConnection();
         const rows = await conn.query(
-            `SELECT s.supplier_id, s.supplier_name, s.contact_name, s.contact_phone,
-                    s.email, s.city, s.quality_rating, s.delay_frequency,
-                    s.trend_alignment, s.notes, s.created_at
+            `SELECT ${SELECT_COLS}
              FROM suppliers s
              WHERE ${SOFT_DELETE_FILTER}
              ORDER BY s.supplier_name`
@@ -66,7 +66,8 @@ router.get('/:id', checkPermission('VIEW_OPERATIONS'), async (req, res) => {
     try {
         conn = await pool.getConnection();
         const [supplier] = await conn.query(
-            `SELECT * FROM suppliers s
+            `SELECT ${SELECT_COLS}
+             FROM suppliers s
              WHERE s.supplier_id = ? AND ${SOFT_DELETE_FILTER}`,
             [req.params.id]
         );
@@ -79,23 +80,29 @@ router.get('/:id', checkPermission('VIEW_OPERATIONS'), async (req, res) => {
 });
 
 router.post('/', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
-    const { supplier_name, contact_name, contact_phone, email, city,
-            quality_rating, delay_frequency, trend_alignment, notes } = req.body;
+    const { supplier_name, factory_name, product_specialization,
+            quality_rating, delay_frequency, price_range,
+            popular_categories, return_issues, trend_alignment } = req.body;
     if (!supplier_name?.trim()) return res.status(400).json({ error: 'supplier_name is required' });
     let conn;
     try {
         conn = await pool.getConnection();
         const result = await conn.query(
             `INSERT INTO suppliers
-                (supplier_name, contact_name, contact_phone, email, city,
-                 quality_rating, delay_frequency, trend_alignment, notes)
+                (supplier_name, factory_name, product_specialization,
+                 quality_rating, delay_frequency, price_range,
+                 popular_categories, return_issues, trend_alignment)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
-                supplier_name.trim(), contact_name?.trim() || null,
-                contact_phone?.trim() || null, email?.trim() || null,
-                city?.trim() || null, quality_rating || null,
-                delay_frequency || null, trend_alignment || null,
-                notes?.trim() || null
+                supplier_name.trim(),
+                factory_name?.trim()            || null,
+                product_specialization?.trim()  || null,
+                quality_rating                  || null,
+                delay_frequency                 || 'medium',
+                price_range?.trim()             || null,
+                popular_categories?.trim()      || null,
+                return_issues?.trim()           || null,
+                trend_alignment                 || 'average',
             ]
         );
         res.status(201).json({ success: true, supplier_id: Number(result.insertId) });
@@ -106,28 +113,35 @@ router.post('/', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
 });
 
 router.put('/:id', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
-    const { supplier_name, contact_name, contact_phone, email, city,
-            quality_rating, delay_frequency, trend_alignment, notes } = req.body;
+    const { supplier_name, factory_name, product_specialization,
+            quality_rating, delay_frequency, price_range,
+            popular_categories, return_issues, trend_alignment } = req.body;
     let conn;
     try {
         conn = await pool.getConnection();
         await conn.query(
             `UPDATE suppliers SET
-                supplier_name   = COALESCE(?, supplier_name),
-                contact_name    = COALESCE(?, contact_name),
-                contact_phone   = COALESCE(?, contact_phone),
-                email           = COALESCE(?, email),
-                city            = COALESCE(?, city),
-                quality_rating  = COALESCE(?, quality_rating),
-                delay_frequency = COALESCE(?, delay_frequency),
-                trend_alignment = COALESCE(?, trend_alignment),
-                notes           = COALESCE(?, notes)
+                supplier_name          = COALESCE(?, supplier_name),
+                factory_name           = COALESCE(?, factory_name),
+                product_specialization = COALESCE(?, product_specialization),
+                quality_rating         = COALESCE(?, quality_rating),
+                delay_frequency        = COALESCE(?, delay_frequency),
+                price_range            = COALESCE(?, price_range),
+                popular_categories     = COALESCE(?, popular_categories),
+                return_issues          = COALESCE(?, return_issues),
+                trend_alignment        = COALESCE(?, trend_alignment)
              WHERE supplier_id = ? AND ${SOFT_DELETE_FILTER}`,
             [
-                supplier_name || null, contact_name || null, contact_phone || null,
-                email || null, city || null, quality_rating || null,
-                delay_frequency || null, trend_alignment || null,
-                notes || null, req.params.id
+                supplier_name          || null,
+                factory_name           || null,
+                product_specialization || null,
+                quality_rating         || null,
+                delay_frequency        || null,
+                price_range            || null,
+                popular_categories     || null,
+                return_issues          || null,
+                trend_alignment        || null,
+                req.params.id,
             ]
         );
         res.json({ success: true });
@@ -137,16 +151,13 @@ router.put('/:id', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
     } finally { if (conn) conn.release(); }
 });
 
-// Phase 5 fix #7: SOFT DELETE — avoids FK constraint errors when thans exist
 router.delete('/:id', checkPermission('MANAGE_PRODUCTS'), async (req, res) => {
     let conn;
     try {
         conn = await pool.getConnection();
         const result = await conn.query(
             `UPDATE suppliers
-             SET is_deleted = 1,
-                 deleted_at  = NOW(),
-                 deleted_by  = ?
+             SET is_deleted = 1, deleted_at = NOW(), deleted_by = ?
              WHERE supplier_id = ? AND ${SOFT_DELETE_FILTER}`,
             [req.user.user_id, req.params.id]
         );
