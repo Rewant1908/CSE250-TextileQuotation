@@ -45,6 +45,11 @@ const PERMISSION_ROLES = {
 
     // AI agents
     USE_AGENTS:               ['admin'],
+
+    // Issue 1 fix: MANAGE_SYSTEM was used in agents.js but missing here
+    // PUT  /api/agents/memory/:scope      — overwrite agent memory
+    // POST /api/agents/memory/:scope/append — append to agent memory
+    MANAGE_SYSTEM:            ['admin'],
 };
 
 export function checkPermission(requiredPermission) {
