@@ -22,6 +22,8 @@ The system supports two roles: **Admin** (full operations access) and **Dealer**
 - **Bale Intake** — Register factory bales and break them into individual thans (rolls) with cost, selling price, and warehouse location
 - **Quotation Requests** — View all dealer quotations; accept or decline with a mandatory reason
 - **Manage Products** — Add, edit, and delete textile products and base pricing
+- **Analytics** — Revenue trends, margin analysis, top retailers, category performance
+- **AI Warehouse Assistant** — Natural language queries over inventory via Gemini 2.5 Flash
 
 ### Dealer Features
 - **Register Customer** — Register new customers with phone and email validation
@@ -30,9 +32,11 @@ The system supports two roles: **Admin** (full operations access) and **Dealer**
 
 ### System Features
 - bcrypt password hashing (10 salt rounds)
+- JWT-based authentication
 - Role-based access control via `checkPermission()` middleware
 - Parameterized SQL queries (SQL injection prevention)
 - Transaction rollback on failed multi-step operations
+- Redis caching for dashboard and inventory queries
 - Automatic margin calculation via DB trigger (`trg_transaction_margin_before_insert`)
 - Automatic movement speed tracking via DB trigger (`trg_update_movement_speed_after_stock_out`)
 - Auto stock deduction when a quotation is accepted (`trg_quotation_accepted_stock_deduct`)
@@ -48,7 +52,9 @@ The system supports two roles: **Admin** (full operations access) and **Dealer**
 | Backend | Node.js + Express.js (ES Modules) |
 | Frontend | React 18 + Vite + JSX |
 | HTTP Client | Axios |
-| Auth | bcrypt (password hashing) |
+| Auth | bcrypt + JWT |
+| Cache | Redis (ioredis) |
+| AI | Google Gemini 2.5 Flash |
 | Styling | CSS (App.css + index.css) |
 | Environment | Linux (WSL) |
 | Dev Tool | IntelliJ IDEA / VS Code |
@@ -60,7 +66,7 @@ The system supports two roles: **Admin** (full operations access) and **Dealer**
 
 | Role | Tabs | Key Permissions |
 |---|---|---|
-| **Admin** | Operations · Record Sale · Retailers · Suppliers · Bale Intake · Quotation Requests · Manage Products | Full read/write across all tables |
+| **Admin** | Operations · Record Sale · Retailers · Suppliers · Bale Intake · Quotation Requests · Manage Products · Analytics · AI Assistant | Full read/write across all tables |
 | **Dealer** | Register Customer · Create Quotation · My Quotations | Own quotations only; read-only products |
 
 ---
@@ -116,38 +122,49 @@ inventory_movements → movement_id, than_id, movement_type, quantity,
 ```
 CSE250-TextileQuotation/
 ├── backend/
-│   ├── server.js              ← Express server — auth, products, bales, thans,
-│   │                            suppliers, operations dashboard, inventory search
+│   ├── load-env.js            ← dotenv loader (must run before server via --import)
+│   ├── server.js              ← Express entry point
 │   ├── db.js                  ← MariaDB connection pool
+│   ├── cache.js               ← Redis (ioredis) client
+│   ├── logger.js              ← Pino structured logger
 │   ├── middleware/
 │   │   └── checkPermission.js ← RBAC middleware
 │   ├── routes/
-│   │   ├── retailers.js       ← GET / POST / PUT retailers
-│   │   └── sales.js           ← GET / POST transactions (with balance auto-update)
+│   │   ├── auth.js            ← login / signup
+│   │   ├── products.js        ← product CRUD
+│   │   ├── suppliers.js       ← supplier CRUD
+│   │   ├── retailers.js       ← retailer CRUD
+│   │   ├── sales.js           ← transactions
+│   │   ├── bales.js           ← bale intake + thans
+│   │   ├── quotations.js      ← quotation workflow
+│   │   ├── operations.js      ← dashboard, inventory, thans
+│   │   ├── analytics.js       ← revenue, margin, category trends
+│   │   ├── agents.js          ← Gemini AI warehouse assistant
+│   │   └── settings.js        ← admin settings
 │   ├── .env                   ← DB credentials (not committed)
-│   └── .env.example           ← Template
+│   └── .env.example           ← template
 ├── database/
-│   ├── schema.sql             ← All 11 CREATE TABLE statements
-│   ├── seed.sql               ← Sample data for all 11 tables
-│   ├── migration_v2.sql       ← Adds columns + 3 DB triggers
-│   ├── migration_v3.sql       ← Fixes column mismatches (retailers phone, transactions payment_status)
+│   ├── schema.sql             ← all 11 CREATE TABLE statements
+│   ├── seed.sql               ← sample data
+│   ├── migration_v2.sql       ← adds columns + 3 triggers
+│   ├── migration_v3.sql       ← fixes column mismatches
 │   └── erd.png                ← Entity Relationship Diagram
 ├── frontend/
 │   └── src/
 │       ├── components/
-│       │   ├── LoginPage.jsx              ← Login + Signup
-│       │   ├── OperationsDashboard.jsx    ← Admin: KPIs, dead stock, signals
-│       │   ├── SaleRecorder.jsx           ← Admin: Record a direct sale
-│       │   ├── RetailerManager.jsx        ← Admin: Retailer CRUD
-│       │   ├── SupplierManager.jsx        ← Admin: Supplier CRUD
-│       │   ├── BaleManager.jsx            ← Admin: Bale intake + than breakdown
-│       │   ├── QuotationHistory.jsx       ← Admin: All requests / User: Own history
-│       │   ├── AdminProductManager.jsx    ← Admin: Product CRUD
-│       │   ├── CustomerForm.jsx           ← User: Register customer
-│       │   └── QuotationForm.jsx          ← User: Create quotation
-│       ├── App.jsx                        ← Root: role-based tab navigation
-│       ├── api.js                         ← Axios instance (baseURL from .env)
-│       └── App.css                        ← Stylesheet
+│       │   ├── LoginPage.jsx
+│       │   ├── OperationsDashboard.jsx
+│       │   ├── SaleRecorder.jsx
+│       │   ├── RetailerManager.jsx
+│       │   ├── SupplierManager.jsx
+│       │   ├── BaleManager.jsx
+│       │   ├── QuotationHistory.jsx
+│       │   ├── AdminProductManager.jsx
+│       │   ├── CustomerForm.jsx
+│       │   └── QuotationForm.jsx
+│       ├── App.jsx
+│       ├── api.js
+│       └── App.css
 └── README.md
 ```
 
@@ -158,8 +175,8 @@ CSE250-TextileQuotation/
 ### Auth
 | Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/api/signup` | Register new user (bcrypt hashed) |
-| `POST` | `/api/login` | Login, returns user_id + role |
+| `POST` | `/api/auth/signup` | Register new user (bcrypt hashed) |
+| `POST` | `/api/auth/login` | Login, returns JWT token + role |
 
 ### Products
 | Method | Endpoint | Description |
@@ -172,8 +189,8 @@ CSE250-TextileQuotation/
 ### Suppliers
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/api/suppliers` | List supplier_id + name (for dropdowns) |
-| `GET` | `/api/suppliers/full` | Full supplier list with all fields (admin) |
+| `GET` | `/api/suppliers` | List supplier_id + name (dropdowns) |
+| `GET` | `/api/suppliers/full` | Full list with all fields (admin) |
 | `POST` | `/api/suppliers` | Add supplier (admin) |
 | `PUT` | `/api/suppliers/:id` | Update supplier (admin) |
 | `DELETE` | `/api/suppliers/:id` | Delete supplier (admin) |
@@ -205,15 +222,28 @@ CSE250-TextileQuotation/
 |---|---|---|
 | `GET` | `/api/operations/dashboard` | Inventory KPIs + signals |
 | `GET` | `/api/inventory/search` | Search available thans |
+| `GET` | `/api/thans` | List thans with filters |
+
+### Analytics
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/analytics/revenue` | Revenue over time |
+| `GET` | `/api/analytics/margins` | Margin analysis |
+| `GET` | `/api/analytics/top-retailers` | Top retailers by revenue |
+| `GET` | `/api/analytics/categories` | Category performance |
 
 ### Quotations
 | Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/api/create-quotation` | Create multi-item quotation |
+| `POST` | `/api/quotations` | Create multi-item quotation |
 | `GET` | `/api/quotations` | List quotations (scoped by role) |
 | `GET` | `/api/quotations/:id` | Single quotation with GST |
 | `PATCH` | `/api/quotations/:id/status` | Accept or decline |
-| `POST` | `/api/enquiry` | Register customer |
+
+### AI Agent
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/agents/warehouse` | Natural language warehouse query |
 
 ---
 
@@ -237,9 +267,12 @@ mariadb -u root -p kt_impex < database/seed.sql
 ### 3. Backend
 ```bash
 cd backend
-cp .env.example .env          # then fill in DB_HOST, DB_USER, DB_PASS
+cp .env.example .env   # fill in DB_HOST, DB_USER, DB_PASSWORD, JWT_SECRET, GEMINI_API_KEY
 npm install
-node server.js
+
+# from repo root:
+npm start              # production
+npm run dev            # development (auto-restart on file change)
 ```
 
 ### 4. Frontend
@@ -262,10 +295,12 @@ Open `http://localhost:5173`
 ## 9. Security
 
 - **Passwords** hashed with bcrypt (10 salt rounds) — never stored in plaintext
+- **JWT** tokens for stateless auth on every protected route
 - **RBAC** via `checkPermission()` middleware on every write/admin endpoint
 - **Parameterized queries** on all SQL — prevents SQL injection
 - **Input validation** — email format, phone length, positive quantities enforced
 - **Transaction rollback** — any multi-step operation rolls back fully on failure
+- **Rate limiting** — 500 req / 15 min per IP
 - **CORS** restricted to `localhost:5173` and `localhost:5174`
 
 ---

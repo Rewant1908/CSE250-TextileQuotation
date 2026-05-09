@@ -3,9 +3,10 @@
   "version": "1.0.0",
   "type": "module",
   "description": "This repository is for the project of the course CSE250 DBMS.",
-  "main": "server.js",
+  "main": "backend/server.js",
   "scripts": {
-    "start": "node backend/server.js"
+    "start": "node --import ./backend/load-env.js backend/server.js",
+    "dev": "node --watch --import ./backend/load-env.js backend/server.js"
   },
   "repository": {
     "type": "git",
@@ -24,6 +25,8 @@
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
+    "helmet": "^8.0.0",
+    "express-rate-limit": "^7.5.0",
     "ioredis": "^5.10.1",
     "jsonwebtoken": "^9.0.3",
     "mariadb": "^3.5.2",
