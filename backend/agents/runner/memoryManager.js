@@ -1,24 +1,13 @@
 // memoryManager.js — Live DB → Agent Memory injection layer
 // Phase 6: AI Memory Design
 //
-// Phase 6 Task 3 update:
-//   - Added 'quotation-summary' case to buildLiveContext()
-//   - _quotationSummaryContext() builds a structured snapshot from:
-//       quotations, quotation_items, customers, products, thans
-//   - No valid_until column used (not present in current schema per quotations.js)
-//
-// This keeps .MEMORY.md as domain knowledge (heuristics, rules, history)
-// and liveContext as operational snapshot (current numbers, today's data).
+// Fix: _salesContext and _quotationSummaryContext were joining 'customers'
+//      and 'quotation_items' which do not exist in the real schema.
+//      Real schema uses 'retailers' (PK: retailer_id) and quotation line
+//      data is not stored in a separate items table.
+//      'customers' references replaced with 'retailers'.
+//      All quotation_items queries removed / simplified.
 
-/**
- * buildLiveContext(agentName, db)
- *
- * @param {string} agentName - one of: inventory, retailer, procurement,
- *                              warehouse, pricing, sales, coordinator,
- *                              quotation-summary
- * @param {object} db        - MariaDB pool (from db.js)
- * @returns {Promise<string>}
- */
 export async function buildLiveContext(agentName, db) {
     try {
         switch (agentName) {
@@ -39,7 +28,7 @@ export async function buildLiveContext(agentName, db) {
 }
 
 // ---------------------------------------------------------------------------
-// Inventory Agent — stock health snapshot
+// Inventory Agent
 // ---------------------------------------------------------------------------
 async function _inventoryContext(db) {
     const rows = await db.query(`
@@ -101,7 +90,7 @@ async function _inventoryContext(db) {
 }
 
 // ---------------------------------------------------------------------------
-// Retailer Agent — retailer behavior snapshot
+// Retailer Agent
 // ---------------------------------------------------------------------------
 async function _retailerContext(db) {
     const topRetailers = await db.query(`
@@ -149,7 +138,7 @@ async function _retailerContext(db) {
 }
 
 // ---------------------------------------------------------------------------
-// Procurement Agent — bale/supplier snapshot
+// Procurement Agent
 // ---------------------------------------------------------------------------
 async function _procurementContext(db) {
     const baleRows = await db.query(`
@@ -209,7 +198,7 @@ async function _procurementContext(db) {
 }
 
 // ---------------------------------------------------------------------------
-// Warehouse Agent — location and movement snapshot
+// Warehouse Agent
 // ---------------------------------------------------------------------------
 async function _warehouseContext(db) {
     const locationRows = await db.query(`
@@ -260,7 +249,7 @@ async function _warehouseContext(db) {
 }
 
 // ---------------------------------------------------------------------------
-// Pricing Agent — margin and velocity snapshot
+// Pricing Agent
 // ---------------------------------------------------------------------------
 async function _pricingContext(db) {
     const marginRows = await db.query(`
@@ -323,7 +312,8 @@ async function _pricingContext(db) {
 }
 
 // ---------------------------------------------------------------------------
-// Sales Agent — recent transactions and quotations snapshot
+// Sales Agent — FIXED: was joining non-existent 'customers' table
+//               now joins 'retailers' (the real table in this schema)
 // ---------------------------------------------------------------------------
 async function _salesContext(db) {
     const recentTxns = await db.query(`
@@ -337,12 +327,14 @@ async function _salesContext(db) {
         LIMIT 20
     `)
 
+    // FIXED: was 'JOIN customers c ON q.customer_id = c.customer_id'
+    //        Real schema: quotations.retailer_id → retailers.retailer_id
     const pendingQuotes = await db.query(`
-        SELECT q.quotation_number, c.customer_name,
+        SELECT q.quotation_number, r.retailer_name,
                q.total_amount, q.status, q.created_at
         FROM quotations q
-        JOIN customers c ON q.customer_id = c.customer_id
-        WHERE q.status IN ('draft', 'sent')
+        JOIN retailers r ON q.retailer_id = r.retailer_id
+        WHERE q.status IN ('draft', 'pending', 'sent')
         ORDER BY q.created_at DESC
         LIMIT 10
     `)
@@ -360,7 +352,7 @@ async function _salesContext(db) {
         '### Pending Quotations',
         pendingQuotes.length
             ? pendingQuotes.map(r =>
-                `- ${r.quotation_number} | ${r.customer_name} | ₹${r.total_amount} | status: ${r.status} | created: ${_dateStr(r.created_at)}`
+                `- ${r.quotation_number} | ${r.retailer_name} | ₹${r.total_amount} | status: ${r.status} | created: ${_dateStr(r.created_at)}`
               )
             : ['- No pending quotations.'],
     ].flat()
@@ -368,7 +360,7 @@ async function _salesContext(db) {
 }
 
 // ---------------------------------------------------------------------------
-// Coordinator Agent — cross-domain summary
+// Coordinator Agent
 // ---------------------------------------------------------------------------
 async function _coordinatorContext(db) {
     const [inv, ret, proc, price] = await Promise.all([
@@ -393,74 +385,62 @@ async function _coordinatorContext(db) {
 }
 
 // ---------------------------------------------------------------------------
-// Quotation Summary Agent — Phase 6 Task 3
+// Quotation Summary Agent — FIXED:
+//   - Removed all references to non-existent 'customers' table
+//   - Removed all references to non-existent 'quotation_items' table
+//   - Now joins 'retailers' for retailer name
 // ---------------------------------------------------------------------------
 async function _quotationSummaryContext(db) {
     // 1. Aggregate stats per status
     const statusStats = await db.query(`
         SELECT status,
-               COUNT(*)                   AS count,
+               COUNT(*)                    AS count,
                ROUND(SUM(total_amount), 2) AS total_value,
                ROUND(AVG(total_amount), 2) AS avg_value,
                ROUND(AVG(DATEDIFF(NOW(), created_at)), 1) AS avg_age_days
         FROM quotations
         GROUP BY status
-        ORDER BY FIELD(status, 'draft', 'sent', 'accepted', 'declined')
+        ORDER BY FIELD(status, 'draft', 'pending', 'sent', 'accepted', 'declined')
     `)
 
-    // 2. Per-customer summary: open value + decline count + latest quotation
-    const customerStats = await db.query(`
-        SELECT c.customer_name,
-               COUNT(q.quotation_id)                              AS total_quotes,
-               ROUND(SUM(CASE WHEN q.status IN ('draft','sent')
-                    THEN q.total_amount ELSE 0 END), 2)           AS open_value,
+    // 2. Per-retailer summary — FIXED: was joining non-existent 'customers' table
+    const retailerStats = await db.query(`
+        SELECT r.retailer_name,
+               COUNT(q.quotation_id)                               AS total_quotes,
+               ROUND(SUM(CASE WHEN q.status IN ('draft','pending','sent')
+                    THEN q.total_amount ELSE 0 END), 2)            AS open_value,
                SUM(CASE WHEN q.status = 'declined' THEN 1 ELSE 0 END) AS decline_count,
                SUM(CASE WHEN q.status = 'accepted' THEN 1 ELSE 0 END) AS accept_count,
-               MAX(q.created_at)                                  AS last_quote_date
+               MAX(q.created_at)                                   AS last_quote_date
         FROM quotations q
-        JOIN customers c ON q.customer_id = c.customer_id
-        GROUP BY q.customer_id
+        JOIN retailers r ON q.retailer_id = r.retailer_id
+        GROUP BY q.retailer_id
         ORDER BY open_value DESC
         LIMIT 15
     `)
 
-    // 3. Product mix: which products appear most in quotation_items
-    const productMix = await db.query(`
-        SELECT COALESCE(p.product_name, 'Unknown') AS product_name,
-               COALESCE(th.fabric_type, 'N/A')     AS fabric_type,
-               COUNT(qi.item_id)                   AS times_quoted,
-               ROUND(AVG(qi.unit_price_at_time), 2) AS avg_quoted_price,
-               ROUND(AVG(th.selling_price), 2)      AS avg_current_price
-        FROM quotation_items qi
-        LEFT JOIN products p  ON qi.product_id = p.product_id
-        LEFT JOIN thans    th ON qi.than_id     = th.than_id
-        GROUP BY qi.product_id, th.fabric_type
-        ORDER BY times_quoted DESC
-        LIMIT 10
-    `)
-
-    // 4. High-risk: customer has outstanding_balance > 0 AND open quotation
+    // 3. High-risk: retailer has outstanding_balance > 0 AND open quotation
     const riskRows = await db.query(`
-        SELECT c.customer_name,
+        SELECT r.retailer_name,
                q.quotation_number, q.status, q.total_amount,
                q.created_at,
-               DATEDIFF(NOW(), q.created_at)        AS age_days
+               DATEDIFF(NOW(), q.created_at) AS age_days,
+               r.outstanding_balance
         FROM quotations q
-        JOIN customers  c ON q.customer_id = c.customer_id
-        LEFT JOIN retailers r ON r.contact_person = c.customer_name
-        WHERE q.status IN ('draft', 'sent')
-          AND (r.outstanding_balance > 0)
+        JOIN retailers r ON q.retailer_id = r.retailer_id
+        WHERE q.status IN ('draft', 'pending', 'sent')
+          AND r.outstanding_balance > 0
         ORDER BY r.outstanding_balance DESC
         LIMIT 10
     `)
 
-    // 5. Draft quotes older than 7 days (stale / forgotten)
+    // 4. Stale drafts older than 7 days
     const staleDrafts = await db.query(`
-        SELECT q.quotation_number, c.customer_name,
+        SELECT q.quotation_number, r.retailer_name,
                q.total_amount,
                DATEDIFF(NOW(), q.created_at) AS age_days
         FROM quotations q
-        JOIN customers c ON q.customer_id = c.customer_id
+        JOIN retailers r ON q.retailer_id = r.retailer_id
         WHERE q.status = 'draft'
           AND DATEDIFF(NOW(), q.created_at) > 7
         ORDER BY age_days DESC
@@ -477,31 +457,24 @@ async function _quotationSummaryContext(db) {
               )
             : ['- No quotation records found.'],
         '',
-        '### Customer Summary (top 15 by open value)',
-        customerStats.length
-            ? customerStats.map(r =>
-                `- ${r.customer_name}: ${r.total_quotes} quotes | open ₹${r.open_value} | accepted=${r.accept_count} declined=${r.decline_count} | last: ${_dateStr(r.last_quote_date)}`
+        '### Retailer Summary (top 15 by open value)',
+        retailerStats.length
+            ? retailerStats.map(r =>
+                `- ${r.retailer_name}: ${r.total_quotes} quotes | open ₹${r.open_value} | accepted=${r.accept_count} declined=${r.decline_count} | last: ${_dateStr(r.last_quote_date)}`
               )
-            : ['- No customer quotation data.'],
+            : ['- No retailer quotation data.'],
         '',
-        '### Product Mix (top 10 by quote frequency)',
-        productMix.length
-            ? productMix.map(r =>
-                `- ${r.product_name} [${r.fabric_type}]: quoted ${r.times_quoted}x | avg quoted price ₹${r.avg_quoted_price}/m | current price ₹${r.avg_current_price}/m`
-              )
-            : ['- No quotation item data.'],
-        '',
-        '### High-Risk Open Quotations (customer has outstanding balance)',
+        '### High-Risk Open Quotations (retailer has outstanding balance)',
         riskRows.length
             ? riskRows.map(r =>
-                `⚠️ ${r.quotation_number} | ${r.customer_name} | ₹${r.total_amount} | status: ${r.status} | ${r.age_days} days old`
+                `⚠️ ${r.quotation_number} | ${r.retailer_name} | ₹${r.total_amount} | status: ${r.status} | ${r.age_days} days old | balance: ₹${r.outstanding_balance}`
               )
             : ['- No high-risk open quotations.'],
         '',
         '### Stale Drafts (> 7 days old)',
         staleDrafts.length
             ? staleDrafts.map(r =>
-                `- ${r.quotation_number} | ${r.customer_name} | ₹${r.total_amount} | ${r.age_days} days stale`
+                `- ${r.quotation_number} | ${r.retailer_name} | ₹${r.total_amount} | ${r.age_days} days stale`
               )
             : ['- No stale drafts.'],
     ].flat()
