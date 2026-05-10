@@ -65,7 +65,7 @@ export default function DealerAgeingStock({ user }) {
                 padding: '12px 18px', marginBottom: 16, fontSize: 13, color: '#166534'
             }}>
                 💡 <strong>Special Offers:</strong> These items are discounted to help clear inventory.
-                Slow-moving stock has <strong>10% off</strong>. Clearance stock (idle >60 days)
+                Slow-moving stock has <strong>10% off</strong>. Clearance stock (idle {'>'} 60 days)
                 has up to <strong>25% off</strong>. Contact KT Impex to place an order.
             </div>
 
@@ -86,7 +86,7 @@ export default function DealerAgeingStock({ user }) {
                 ))}
             </div>
 
-            {/* ── Stock cards grid ───────────────────────────────────────────── */}
+            {/* ── Stock cards grid ────────────────────────────────────────────── */}
             {visible.length === 0 ? (
                 <div className="kt-card">
                     <div className="kt-empty">
