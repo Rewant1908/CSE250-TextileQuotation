@@ -8,6 +8,9 @@
  *     (old: pending | accepted | declined  — 'pending' kept as alias for 'draft' on reads)
  *  8. quotations.status lifecycle now matches sales.MEMORY.md:
  *     draft → sent → accepted / declined
+ *  8b. WhatsApp notification sent via sendQuotationNotification():
+ *     - on POST /  (new quotation created) → notifies customer if contact_phone present
+ *     - on PATCH /:id/status → sent        → notifies customer when salesperson marks as sent
  *
  * Schema columns (verified + extended):
  *   quotations      : quotation_id, quotation_number, customer_id, user_id, status,
@@ -21,6 +24,7 @@ import { Router } from 'express';
 import pool from '../db.js';
 import { checkPermission } from '../middleware/checkPermission.js';
 import logger from '../logger.js';
+import { sendQuotationNotification } from '../services/whatsappService.js';
 
 const router = Router();
 
@@ -29,6 +33,20 @@ const VALID_STATUSES = ['draft', 'sent', 'accepted', 'declined'];
 // backward-compat alias: the old ENUM used 'pending' — treat it as 'draft'
 function normaliseStatus(s) {
     return s === 'pending' ? 'draft' : s;
+}
+
+/**
+ * notifyCustomer(phone, logLabel)
+ * Fires sendQuotationNotification for a phone number (strips leading + if present).
+ * Non-blocking — errors are logged but never bubble up to the HTTP response.
+ */
+async function notifyCustomer(phone, logLabel) {
+    if (!phone) return;
+    // Normalise: remove +, spaces, dashes
+    const to = String(phone).replace(/[\s\-+]/g, '');
+    sendQuotationNotification(to)
+        .then(() => logger.info({ to }, `[quotations] WhatsApp notification sent (${logLabel})`))
+        .catch(err => logger.warn({ err, to }, `[quotations] WhatsApp notification failed (${logLabel}) — non-critical`));
 }
 
 // ── GET /api/quotations ───────────────────────────────────────────────────────
@@ -161,6 +179,11 @@ router.post('/', checkPermission('CREATE_QUOTATION'), async (req, res) => {
         }
 
         await conn.commit();
+
+        // ── WhatsApp: notify customer that a quotation has been created ──────
+        // Fires after commit so HTTP response is never delayed by WhatsApp API.
+        notifyCustomer(contact_phone, `POST quotation_id=${quotation_id}`);
+
         res.status(201).json({ success: true, quotation_id, quotation_number });
     } catch (err) {
         if (conn) await conn.rollback();
@@ -189,6 +212,19 @@ router.patch('/:id/status', checkPermission('MANAGE_QUOTATION_STATUS'), async (r
              WHERE quotation_id = ?`,
             [status, decline_reason, req.params.id]
         );
+
+        // ── WhatsApp: notify customer when salesperson marks quotation as 'sent' ──
+        if (status === 'sent') {
+            const [row] = await conn.query(
+                `SELECT c.contact_phone
+                 FROM quotations q
+                 LEFT JOIN customers c ON c.customer_id = q.customer_id
+                 WHERE q.quotation_id = ?`,
+                [req.params.id]
+            );
+            notifyCustomer(row?.contact_phone, `PATCH status=sent quotation_id=${req.params.id}`);
+        }
+
         res.json({ success: true, status });
     } catch (err) {
         logger.error({ err }, '[quotations] PATCH /:id/status');
