@@ -1,7 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import API from '../api'
 
+// Full lifecycle: draft → sent → accepted | declined
 const STATUS_COLORS = {
+    draft:    { bg: '#1e3a5f44', color: '#93c5fd', border: '#3b82f655' },
+    sent:     { bg: '#1e3a5f44', color: '#60a5fa', border: '#2563eb55' },
     pending:  { bg: '#78350f44', color: '#fbbf24', border: '#f59e0b55' },
     accepted: { bg: '#06524444', color: '#34d399', border: '#10b98155' },
     declined: { bg: '#7f1d1d44', color: '#f87171', border: '#ef444455' },
@@ -50,7 +53,12 @@ export default function QuotationHistory({ user }) {
                 { status, decline_reason },
                 { headers: { 'x-user-id': String(user.user_id) } }
             )
-            showToast(`Quotation #${id} marked ${status}.`, 'success')
+            showToast(
+                status === 'sent'
+                    ? `Quotation #${id} marked sent — WhatsApp notification fired! 📱`
+                    : `Quotation #${id} marked ${status}.`,
+                'success'
+            )
             setDeclineId(null)
             load()
         } catch (err) {
@@ -68,46 +76,76 @@ export default function QuotationHistory({ user }) {
                 <table className="quotation-table">
                     <thead>
                         <tr>
-                            <th>#</th><th>Customer</th><th>Total</th>
+                            <th>#</th><th>Customer</th><th>Phone</th><th>Total</th>
                             <th>Status</th><th>Created</th><th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         {quotations.map(q => {
                             const sc = STATUS_COLORS[q.status] || STATUS_COLORS.pending
+                            // isDraft covers both 'draft' and legacy 'pending'
+                            const isDraft = q.status === 'draft' || q.status === 'pending'
                             return (
                                 <React.Fragment key={q.quotation_id}>
                                     <tr>
-                                        <td>#{q.quotation_id}</td>
+                                        <td>#{q.quotation_number || q.quotation_id}</td>
                                         <td>{q.customer_name}</td>
-                                        <td>NPR {Number(q.grand_total ?? 0).toFixed(2)}</td>
+                                        <td style={{ fontSize: 12 }}>
+                                            {q.contact_phone
+                                                ? <span title="WhatsApp notifications enabled">📱 {q.contact_phone}</span>
+                                                : <span style={{ color: '#64748b' }}>—</span>}
+                                        </td>
+                                        <td>NPR {Number(q.total_amount ?? q.grand_total ?? 0).toFixed(2)}</td>
                                         <td>
-                                            <span style={{ background: sc.bg, color: sc.color, border: `1px solid ${sc.border}`, borderRadius: 6, padding: '2px 10px', fontSize: 12, fontWeight: 600 }}>
+                                            <span style={{
+                                                background: sc.bg, color: sc.color,
+                                                border: `1px solid ${sc.border}`,
+                                                borderRadius: 6, padding: '2px 10px',
+                                                fontSize: 12, fontWeight: 600
+                                            }}>
                                                 {q.status}
                                             </span>
                                         </td>
                                         <td>{q.created_at?.slice(0, 10)}</td>
-                                        <td>
+                                        <td style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                                             <button className="btn btn-danger" onClick={() => viewDetail(q.quotation_id)}>
                                                 {selected === q.quotation_id ? 'Close' : 'View'}
                                             </button>
-                                            {isAdmin && q.status === 'pending' && (
+
+                                            {/* draft/pending → can mark as sent (fires WhatsApp) or decline */}
+                                            {isAdmin && isDraft && (
+                                                <>
+                                                    <button
+                                                        className="btn btn-accept"
+                                                        title={q.contact_phone ? 'Mark sent & notify customer via WhatsApp' : 'Mark sent (no phone — WhatsApp skipped)'}
+                                                        onClick={() => updateStatus(q.quotation_id, 'sent')}
+                                                    >
+                                                        📱 Send
+                                                    </button>
+                                                    <button className="btn btn-decline" onClick={() => { setDeclineId(q.quotation_id); setReason('') }}>Decline</button>
+                                                </>
+                                            )}
+
+                                            {/* sent → can accept or decline */}
+                                            {isAdmin && q.status === 'sent' && (
                                                 <>
                                                     <button className="btn btn-accept" onClick={() => updateStatus(q.quotation_id, 'accepted')}>Accept</button>
                                                     <button className="btn btn-decline" onClick={() => { setDeclineId(q.quotation_id); setReason('') }}>Decline</button>
                                                 </>
                                             )}
-                                            {isAdmin && q.status !== 'pending' && (
-                                                <button className="btn btn-reset" onClick={() => updateStatus(q.quotation_id, 'pending')}>Reset</button>
+
+                                            {/* accepted/declined → reset to draft */}
+                                            {isAdmin && (q.status === 'accepted' || q.status === 'declined') && (
+                                                <button className="btn btn-reset" onClick={() => updateStatus(q.quotation_id, 'draft')}>Reset</button>
                                             )}
                                         </td>
                                     </tr>
 
                                     {isAdmin && declineId === q.quotation_id && (
                                         <tr>
-                                            <td colSpan={6}>
+                                            <td colSpan={7}>
                                                 <div className="decline-box">
-                                                    <p className="decline-label">Provide a reason for declining Quotation #{q.quotation_id}:</p>
+                                                    <p className="decline-label">Reason for declining Quotation #{q.quotation_id}:</p>
                                                     <textarea
                                                         value={reason}
                                                         onChange={e => setReason(e.target.value)}
@@ -129,9 +167,13 @@ export default function QuotationHistory({ user }) {
 
                                     {selected === q.quotation_id && detail && (
                                         <tr>
-                                            <td colSpan={6}>
+                                            <td colSpan={7}>
                                                 <div className="detail-box">
-                                                    <h3>Line Items - Quotation #{detail.quotation_id}</h3>
+                                                    <h3>Line Items — {detail.quotation_number || `#${detail.quotation_id}`}</h3>
+                                                    <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 8 }}>
+                                                        Customer: {detail.customer_name}
+                                                        {detail.contact_phone && ` · 📱 ${detail.contact_phone}`}
+                                                    </p>
                                                     {detail.decline_reason && (
                                                         <p style={{ color: '#f87171', marginBottom: 8 }}>Reason: {detail.decline_reason}</p>
                                                     )}
@@ -144,7 +186,7 @@ export default function QuotationHistory({ user }) {
                                                                 <tr key={i}>
                                                                     <td>{item.product_name}</td>
                                                                     <td>{item.quantity}</td>
-                                                                    <td>NPR {Number(item.unit_price).toFixed(2)}</td>
+                                                                    <td>NPR {Number(item.unit_price_at_time ?? item.unit_price ?? 0).toFixed(2)}</td>
                                                                     <td>NPR {Number(item.line_total).toFixed(2)}</td>
                                                                 </tr>
                                                             ))}

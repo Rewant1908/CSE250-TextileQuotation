@@ -24,7 +24,6 @@ export default function QuotationForm({ user }) {
     const updateItem = (i, field, value) => {
         const updated = [...items]
         updated[i][field] = value
-        // auto-fill price and name when product selected
         if (field === 'product_id') {
             const p = products.find(p => String(p.product_id) === String(value))
             if (p) {
@@ -39,31 +38,39 @@ export default function QuotationForm({ user }) {
     const vat        = subtotal * 0.13
     const grandTotal = subtotal + vat
 
+    // Derive selected retailer's phone for WhatsApp notification
+    const selectedRetailer = retailers.find(r => String(r.retailer_id) === String(retailerId))
+    const contact_phone    = selectedRetailer?.phone || selectedRetailer?.contact_phone || null
+
     const handleSubmit = async (e) => {
         e.preventDefault()
         if (!retailerId) return showToast('Please select a customer / dealer.', 'error')
         const validItems = items.filter(i => i.product_id && parseFloat(i.quantity) > 0)
         if (!validItems.length) return showToast('Add at least one product with quantity.', 'error')
 
-        const selectedRetailer = retailers.find(r => String(r.retailer_id) === String(retailerId))
-        const customer_name    = selectedRetailer?.shop_name || `Customer #${retailerId}`
+        const customer_name = selectedRetailer?.shop_name || `Customer #${retailerId}`
 
         setLoading(true)
         try {
             const res = await API.post('/quotations', {
                 user_id:       user?.user_id ?? null,
                 customer_name,
+                contact_phone,          // ← WhatsApp notification target
                 grand_total:   grandTotal,
                 items: validItems.map(i => ({
-                    product_id:   Number(i.product_id),
-                    product_name: i.product_name,
-                    quantity:     parseFloat(i.quantity),
-                    unit_price:   i.unit_price,
-                    line_total:   i.unit_price * parseFloat(i.quantity)
+                    product_id:         Number(i.product_id),
+                    product_name:       i.product_name,
+                    quantity:           parseFloat(i.quantity),
+                    unit_price_at_time: i.unit_price,
+                    unit_price:         i.unit_price,
+                    line_total:         i.unit_price * parseFloat(i.quantity)
                 }))
             })
             if (res.data.success) {
-                showToast(`Quotation #${res.data.quotation_id} created! Pending admin approval.`, 'success')
+                const waMsg = contact_phone
+                    ? ` WhatsApp notification sent to ${contact_phone}.`
+                    : ' (No phone number — WhatsApp skipped.)'
+                showToast(`Quotation #${res.data.quotation_id} created!${waMsg}`, 'success')
                 setRetailerId('')
                 setItems([{ product_id: '', product_name: '', quantity: '', unit_price: 0 }])
             } else {
@@ -92,6 +99,14 @@ export default function QuotationForm({ user }) {
                             </option>
                         ))}
                     </select>
+                    {/* WhatsApp indicator — shows if selected customer has a phone */}
+                    {retailerId && (
+                        <p style={{ fontSize: 12, marginTop: 6, color: contact_phone ? '#34d399' : '#f87171' }}>
+                            {contact_phone
+                                ? `✅ WhatsApp notification will be sent to ${contact_phone}`
+                                : '⚠️ No phone number — WhatsApp notification will be skipped'}
+                        </p>
+                    )}
                 </div>
 
                 <label style={{ fontSize: '13px', color: '#94a3b8' }}>Products</label>
