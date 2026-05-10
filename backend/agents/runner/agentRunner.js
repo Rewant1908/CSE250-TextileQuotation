@@ -2,17 +2,14 @@
 // Phase 4 / Phase 6: Technical Foundation + AI Memory Design
 // Phase 10: validateStructuredVerdict() exported for integration tests and spawn route
 // Phase 11: Multi-turn conversation history — agents now maintain context across messages.
+// Phase 12: 429 retry with exponential backoff — geminiWithRetry() wraps all Gemini calls.
 //
-// KEY CHANGES in Phase 11:
-//   - callGemini / callOpenAI now accept a `history` array of {role, content} messages.
-//     The history is passed to the model so follow-up questions resolve correctly.
-//   - runAgent() accepts an optional `history` param (from sessionStore).
-//   - VERDICT / internal scaffold lines are STRIPPED from the response sent to the user.
-//     They are still extracted for backend logging/routing but never shown in the UI.
-//   - generateText() remains the single abstraction point — both providers handle history.
-//
-// Memory update protocol (unchanged):
-//   MEMORY_UPDATE:\n...\nEND_MEMORY — extracted, persisted, stripped from display.
+// KEY CHANGES in Phase 12:
+//   - geminiWithRetry() added: reads retryDelay from Google's 429 body, falls back
+//     to exponential backoff (60s → 120s → 300s). Max 3 retries.
+//   - Non-429 errors (400 duplicate function, 401 auth) are thrown immediately.
+//   - Both callGemini() and callOpenAI() route through generateText() as before;
+//     retry is applied inside callGemini() only (OpenAI has its own quota model).
 
 import { readFile }              from 'fs/promises'
 import { resolve, dirname }      from 'path'
@@ -23,6 +20,50 @@ import logger                    from '../../logger.js'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname  = dirname(__filename)
 
+// ── Retry helper ─────────────────────────────────────────────────────────────
+
+const MAX_RETRIES = 3
+
+function parseRetryDelay(err, attempt) {
+  const fallbacks = [60_000, 120_000, 300_000]
+  try {
+    const match = err?.message?.match(/retry in ([\d.]+)s/i)
+    if (match) return Math.ceil(parseFloat(match[1]) * 1000) + 2000
+  } catch (_) {}
+  return fallbacks[Math.min(attempt, fallbacks.length - 1)]
+}
+
+async function geminiWithRetry(fn, label = 'gemini call') {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await fn()
+    } catch (err) {
+      const is429 = err?.status === 429
+                 || err?.message?.includes('429')
+                 || err?.message?.includes('Too Many Requests')
+                 || err?.message?.includes('quota')
+
+      if (!is429 || attempt === MAX_RETRIES) {
+        if (is429) {
+          throw new Error(
+            `Gemini API quota exhausted after ${MAX_RETRIES} retries. ` +
+            `You have hit the free-tier limit (20 req/day for gemini-2.5-flash). ` +
+            `Wait until tomorrow or upgrade your plan at https://ai.dev/rate-limit`
+          )
+        }
+        throw err
+      }
+
+      const delayMs = parseRetryDelay(err, attempt)
+      logger.warn(
+        { label, attempt, delayMs, error: err.message },
+        `[429] Gemini rate-limited — retrying in ${Math.round(delayMs / 1000)}s (attempt ${attempt + 1}/${MAX_RETRIES})`
+      )
+      await new Promise(r => setTimeout(r, delayMs))
+    }
+  }
+}
+
 // ── Provider abstraction ──────────────────────────────────────────────────────
 const AGENT_PROVIDER = (process.env.AGENT_PROVIDER || 'gemini').toLowerCase()
 
@@ -32,7 +73,7 @@ let _openaiClient = null
 /**
  * callGemini — Phase 11: uses startChat() with history so the model has full
  * conversation context. history = [{role:'user'|'assistant', content:'...'}]
- * Gemini uses role 'model' for assistant turns.
+ * Phase 12: all sendMessage calls go through geminiWithRetry().
  */
 async function callGemini(modelName, systemPrompt, query, history = []) {
     if (!process.env.GEMINI_API_KEY)
@@ -45,14 +86,16 @@ async function callGemini(modelName, systemPrompt, query, history = []) {
         systemInstruction: systemPrompt,
     })
 
-    // Map history to Gemini's expected format
     const geminiHistory = history.map(h => ({
         role:  h.role === 'assistant' ? 'model' : 'user',
         parts: [{ text: h.content }],
     }))
 
-    const chat   = model.startChat({ history: geminiHistory })
-    const result = await chat.sendMessage(query)
+    const chat = model.startChat({ history: geminiHistory })
+    const result = await geminiWithRetry(
+      () => chat.sendMessage(query),
+      `callGemini:${modelName}`
+    )
     return result.response.text()
 }
 
@@ -70,7 +113,6 @@ async function callOpenAI(modelName, systemPrompt, query, history = []) {
         })
     }
 
-    // Build full messages array: system + history + current query
     const messages = [
         { role: 'system', content: systemPrompt },
         ...history.map(h => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: h.content })),
@@ -153,35 +195,14 @@ function extractVerdict(responseText) {
     return null
 }
 
-/**
- * stripInternalScaffolding — Phase 11: removes all internal agent markup
- * that is meant for the backend only and should never be shown to users.
- *
- * Strips:
- *   - VERDICT: ... lines
- *   - RETAILER SIGNAL / PROCUREMENT VERDICT / PRICING VERDICT / SALES SIGNAL / WAREHOUSE VERDICT lines
- *   - "Invoking: AgentName" lines
- *   - "To AgentName: ..." delegation headers
- *   - "AgentName Output:" section headers
- *   - Triple-backtick json blocks that are raw structured output (not code examples)
- *   - Confidence: HIGH/MEDIUM/LOW suffixes on verdict lines
- *   - Leading/trailing whitespace
- */
 function stripInternalScaffolding(text) {
     return text
-        // Remove verdict/signal lines entirely
         .replace(/^(VERDICT|RETAILER SIGNAL|PROCUREMENT VERDICT|PRICING VERDICT|RETRIEVAL|WAREHOUSE VERDICT|SALES SIGNAL)[^\n]*/gm, '')
-        // Remove "Invoking: XAgent" lines
         .replace(/^Invoking:\s*.+$/gm, '')
-        // Remove "To XAgent:" delegation headers
         .replace(/^To \w+Agent?:\s*/gm, '')
-        // Remove "XAgent Output:" section headers
         .replace(/^\w+(?:Agent|Manager)?\s+Output:\s*/gm, '')
-        // Remove raw JSON blocks (triple backtick json) — these are internal structured output
         .replace(/```json[\s\S]*?```/g, '')
-        // Remove Confidence: HIGH/MEDIUM/LOW trailing annotations
         .replace(/\|\s*Confidence:\s*(HIGH|MEDIUM|LOW)/gi, '')
-        // Collapse multiple blank lines into one
         .replace(/\n{3,}/g, '\n\n')
         .trim()
 }
@@ -200,25 +221,6 @@ export function validateStructuredVerdict(text) {
 
 // ── Core runner ───────────────────────────────────────────────────────────────
 
-/**
- * runAgent({ agentName, query, context?, username?, history? })
- *
- * Phase 11 additions:
- *   - `history` param: [{role:'user'|'assistant', content:'...'}]
- *     Passed directly to the LLM so prior turns are in context.
- *   - Response is cleaned with stripInternalScaffolding() before returning,
- *     so VERDICT / Invoking / Output: lines are never visible to end users.
- *
- * Full lifecycle:
- * 1. Load agent definition
- * 2. Load long-term memory (project/user scope)
- * 3. Build system prompt = definition + memory + context
- * 4. Call LLM with history + current query
- * 5. Extract VERDICT (for backend routing only)
- * 6. Extract & persist MEMORY_UPDATE
- * 7. Strip all internal scaffolding from display response
- * 8. Return structured result
- */
 export async function runAgent({ agentName, query, context = '', username = 'system', history = [] }) {
     const start = Date.now()
     logger.debug({ agentName, username, historyLen: history.length }, 'Agent run started')
@@ -230,26 +232,21 @@ export async function runAgent({ agentName, query, context = '', username = 'sys
         agent.systemPrompt,
         memory  ? `\n\n## Agent Memory\n${memory}`   : '',
         context ? `\n\n## Live Context\n${context}`  : '',
-        // Remind the agent it is in a multi-turn conversation
         history.length > 0
             ? `\n\n## Conversation\nYou are mid-conversation. The message history above is your prior context. Answer follow-up questions naturally without re-introducing yourself.`
             : '',
     ].join('')
 
-    // Phase 11: pass history to LLM
     const rawResponse = await generateText(agent.model, fullSystemPrompt, query, history)
 
-    // Extract VERDICT for backend use (not shown to user)
     const verdict = extractVerdict(rawResponse)
 
-    // Extract and persist long-term memory updates
     const { memoryContent, cleanResponse: afterMemoryStrip } = extractMemoryUpdate(rawResponse)
     if (memoryContent) {
         await writeMemorySnapshot(agent.memoryScope, agentName, username, memoryContent)
         logger.debug({ agentName, scope: agent.memoryScope }, 'Memory snapshot written')
     }
 
-    // Phase 11: strip all internal scaffolding — clean response is what the user sees
     const displayResponse = stripInternalScaffolding(afterMemoryStrip)
 
     const durationMs = Date.now() - start
@@ -258,8 +255,8 @@ export async function runAgent({ agentName, query, context = '', username = 'sys
     return {
         agentName,
         verdict,
-        fullResponse: displayResponse,   // clean, user-facing
-        rawResponse,                     // unstripped, for internal/debug use
+        fullResponse: displayResponse,
+        rawResponse,
         durationMs,
         model:    agent.model,
         provider: AGENT_PROVIDER,
