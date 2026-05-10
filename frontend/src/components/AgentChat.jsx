@@ -1,289 +1,395 @@
+// AgentChat.jsx — SSE-streaming multi-agent chat UI
+// Consumes Server-Sent Events from POST /api/agents/chat and renders
+// live tool-call steps, agent spawns, and the final markdown response.
+
 import { useState, useRef, useEffect, useCallback } from 'react'
 import API from '../api'
 
-// ── Agent definitions ────────────────────────────────────────────────────────
+// ── Agent definitions ─────────────────────────────────────────────────────────
 const AGENTS = [
-    { id: 'coordinator',       label: 'Coordinator',  emoji: '🧠', desc: 'Routes queries to the right specialist agent' },
-    { id: 'inventory',         label: 'Inventory',    emoji: '📦', desc: 'Stock levels, thans, bales' },
-    { id: 'pricing',           label: 'Pricing',      emoji: '💰', desc: 'Quotation rates and margins' },
-    { id: 'sales',             label: 'Sales',        emoji: '📈', desc: 'Sales trends and records' },
-    { id: 'procurement',       label: 'Procurement',  emoji: '🚚', desc: 'Supplier and bale intake' },
-    { id: 'retailer',          label: 'Retailer',     emoji: '🏪', desc: 'Retailer accounts and history' },
-    { id: 'warehouse',         label: 'Warehouse',    emoji: '🏭', desc: 'Location and movement data' },
-    { id: 'quotation-summary', label: 'Quotation',    emoji: '📋', desc: 'Quotation summaries and history' },
+  { id: 'coordinator', label: 'Coordinator', emoji: '🧠', desc: 'Routes to the right specialist and executes actions' },
+  { id: 'inventory',   label: 'Inventory',   emoji: '📦', desc: 'Stock levels, thans, bales' },
+  { id: 'quotation',   label: 'Quotation',   emoji: '📋', desc: 'Accept / reject / list quotations' },
+  { id: 'product',     label: 'Product',     emoji: '🏷️',  desc: 'Add, update products and stock' },
+  { id: 'retailer',    label: 'Retailer',    emoji: '🏪', desc: 'Retailer accounts and credit limits' },
+  { id: 'warehouse',   label: 'Warehouse',   emoji: '🏭', desc: 'Intake bales, warehouse summary' },
+  { id: 'sales',       label: 'Sales',       emoji: '📈', desc: 'Sales trends and records' },
 ]
 
-// ── Generate a new session ID (UUID v4) ──────────────────────────────────────
-function newSessionId() {
-    return crypto.randomUUID()
-}
-
-// ── Lightweight markdown renderer ────────────────────────────────────────────
-function renderMarkdown(text) {
-    if (!text) return ''
-    // Tables
-    text = text.replace(
-        /\|(.+)\|\n\|[-| :]+\|\n((\|.+\|\n?)+)/g,
-        (_, header, rows) => {
-            const ths = header.split('|').filter(Boolean).map(h => `<th>${h.trim()}</th>`).join('')
-            const trs = rows.trim().split('\n').map(row => {
-                const tds = row.split('|').filter(Boolean).map(c => `<td>${c.trim()}</td>`).join('')
-                return `<tr>${tds}</tr>`
-            }).join('')
-            return `<div class="ac-table-wrap"><table><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table></div>`
-        }
-    )
-    // Bold
-    text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    // Italic
-    text = text.replace(/\*(.+?)\*/g, '<em>$1</em>')
-    // Headers
-    text = text.replace(/^### (.+)$/gm, '<h4>$1</h4>')
-    text = text.replace(/^## (.+)$/gm, '<h3>$1</h3>')
-    text = text.replace(/^# (.+)$/gm, '<h2>$1</h2>')
-    // Inline code
-    text = text.replace(/`([^`]+)`/g, '<code>$1</code>')
-    // Bullet lists
-    text = text.replace(/^[*-] (.+)$/gm, '<li>$1</li>')
-    text = text.replace(/(<li>.*<\/li>\n?)+/g, m => `<ul>${m}</ul>`)
-    // Paragraphs / line breaks
-    text = text.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br/>')
-    return `<p>${text}</p>`
-}
-
-// ── Suggested starter prompts per agent ──────────────────────────────────────
 const STARTERS = {
-    coordinator:       ['What is the current stock status?', 'Show me this week\'s sales summary', 'Which products are running low?'],
-    inventory:         ['How many thans of cotton fabric are left?', 'List all low-stock items', 'What was added to stock this week?'],
-    pricing:           ['What is the margin on our top product?', 'Show quotation rates for polyester', 'Which items have the highest markup?'],
-    sales:             ['How many sales were recorded today?', 'Who are our top-selling retailers?', 'Show sales trend for last 30 days'],
-    procurement:       ['What bales arrived this week?', 'List pending supplier orders', 'Which supplier delivers fastest?'],
-    retailer:          ['Show all active retailer accounts', 'Which retailer has the most orders?', 'Find retailers in Ahmedabad'],
-    warehouse:         ['Where is batch #WH-001 stored?', 'Show items by warehouse location', 'What moved out of the warehouse today?'],
-    'quotation-summary': ['Show recent quotations', 'Which quotation is pending approval?', 'Summarise quotation #Q-042'],
+  coordinator: [
+    'Accept quotation #3',
+    'Show all pending quotations',
+    'Add product White Poplin cotton at ₹45 per meter',
+    'Which retailers have the highest outstanding balance?',
+    'Update stock of bale #12 to 80 units',
+  ],
+  inventory:  ['How many thans of cotton are left?', 'List all low-stock bales', 'What was added this week?'],
+  quotation:  ['List pending quotations', 'Accept quotation #5 with 5% discount', 'Reject quotation #7 — out of stock'],
+  product:    ['List all products', 'Add a new product: Silk Georgette ₹120/meter', 'Update price of product #4 to ₹55'],
+  retailer:   ['Show all retailers', 'Get details for retailer #2', 'Set credit limit of retailer #3 to ₹50000'],
+  warehouse:  ['Warehouse summary', 'Intake 200 bales of polyester ₹30 purchase ₹45 sale', 'List recent intakes'],
+  sales:      ['Sales trend last 30 days', 'Top 5 selling products', 'Revenue this month'],
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function newUUID()  { return crypto.randomUUID() }
+
+function renderMarkdown(text) {
+  if (!text) return ''
+  text = text.replace(
+    /\|(.+)\|\n\|[-| :]+\|\n((\|.+\|\n?)+)/g,
+    (_, header, rows) => {
+      const ths = header.split('|').filter(Boolean).map(h => `<th>${h.trim()}</th>`).join('')
+      const trs = rows.trim().split('\n').map(row => {
+        const tds = row.split('|').filter(Boolean).map(c => `<td>${c.trim()}</td>`).join('')
+        return `<tr>${tds}</tr>`
+      }).join('')
+      return `<div class="ac-table-wrap"><table><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table></div>`
+    }
+  )
+  text = text.replace(/```[\w]*\n([\s\S]*?)```/g, (_, code) => `<pre><code>${code.replace(/</g,'&lt;')}</code></pre>`)
+  text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+  text = text.replace(/\*(.+?)\*/g,     '<em>$1</em>')
+  text = text.replace(/^### (.+)$/gm, '<h4>$1</h4>')
+  text = text.replace(/^## (.+)$/gm,  '<h3>$1</h3>')
+  text = text.replace(/^# (.+)$/gm,   '<h2>$1</h2>')
+  text = text.replace(/`([^`]+)`/g,   '<code>$1</code>')
+  text = text.replace(/^[*-] (.+)$/gm,'<li>$1</li>')
+  text = text.replace(/(<li>.*<\/li>\n?)+/g, m => `<ul>${m}</ul>`)
+  text = text.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br/>')
+  return `<p>${text}</p>`
+}
+
+// ── Step bubble component ─────────────────────────────────────────────────────
+const STEP_ICONS = {
+  thinking:         '💭',
+  tool_call:        '🔧',
+  tool_result:      '✅',
+  tool_error:       '❌',
+  spawn:            '🤖',
+  spawn_complete:   '✓',
+  coordinator_start:'🧠',
+}
+
+function StepBubble({ step }) {
+  const icon = STEP_ICONS[step.type] || '•'
+  let label = ''
+  if (step.type === 'thinking')          label = step.message
+  else if (step.type === 'tool_call')    label = `Calling ${step.tool}(${JSON.stringify(step.args || {}).slice(0, 60)}…)`
+  else if (step.type === 'tool_result')  label = `${step.tool} → ${JSON.stringify(step.result || {}).slice(0, 80)}…`
+  else if (step.type === 'tool_error')   label = `${step.tool} error: ${step.error}`
+  else if (step.type === 'spawn')        label = `Spawning ${step.agent} agent: ${step.task?.slice(0, 60)}…`
+  else if (step.type === 'spawn_complete') label = `${step.agent} agent finished`
+  else if (step.type === 'coordinator_start') label = step.message
+  else                                   label = step.message || step.type
+
+  return (
+    <div className={`ac-step ac-step--${step.type}`}>
+      <span className="ac-step-icon">{icon}</span>
+      <span className="ac-step-label">{label}</span>
+    </div>
+  )
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function AgentChat({ user }) {
-    const [agent,     setAgent]     = useState('coordinator')
-    const [messages,  setMessages]  = useState([])
-    const [query,     setQuery]     = useState('')
-    const [loading,   setLoading]   = useState(false)
-    const [sessionId, setSessionId] = useState(() => newSessionId())
-    const [turns,     setTurns]     = useState(0)
+  const [agent,     setAgent]     = useState('coordinator')
+  const [messages,  setMessages]  = useState([])
+  const [query,     setQuery]     = useState('')
+  const [loading,   setLoading]   = useState(false)
+  const [sessionId, setSessionId] = useState(() => newUUID())
 
-    const bottomRef   = useRef(null)
-    const textareaRef = useRef(null)
+  const bottomRef   = useRef(null)
+  const textareaRef = useRef(null)
+  const esRef       = useRef(null)   // active EventSource
 
-    // Auto-scroll to latest message
-    useEffect(() => {
-        bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }, [messages, loading])
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, loading])
 
-    // When the user switches agent → start a brand-new session automatically
-    // (old session stays alive on the server until its TTL expires — no wasted DELETE)
-    const handleAgentSwitch = (newAgent) => {
-        if (newAgent === agent) return
-        setAgent(newAgent)
-        setMessages([])
-        setSessionId(newSessionId())
-        setTurns(0)
+  const handleAgentSwitch = (a) => {
+    if (a === agent) return
+    esRef.current?.close()
+    setAgent(a)
+    setMessages([])
+    setSessionId(newUUID())
+    setLoading(false)
+  }
+
+  // ── Send via SSE fetch ────────────────────────────────────────────────────
+  const sendMessage = useCallback(async (overrideText) => {
+    const text = (overrideText ?? query).trim()
+    if (!text || loading) return
+
+    setMessages(prev => [...prev, { role: 'user', content: text, ts: Date.now() }])
+    setQuery('')
+    setLoading(true)
+
+    // Add an in-progress assistant message to accumulate steps into
+    const msgId = Date.now()
+    setMessages(prev => [...prev, {
+      role: 'assistant', id: msgId, content: null,
+      steps: [], ts: Date.now(), done: false,
+    }])
+
+    const addStep = (step) => {
+      setMessages(prev => prev.map(m =>
+        m.id === msgId ? { ...m, steps: [...(m.steps || []), step] } : m
+      ))
     }
 
-    // ── Send a message ────────────────────────────────────────────────────────
-    const sendMessage = useCallback(async (overrideText) => {
-        const text = (overrideText ?? query).trim()
-        if (!text || loading) return
-
-        setMessages(prev => [...prev, { role: 'user', content: text, ts: Date.now() }])
-        setQuery('')
-        setLoading(true)
-
-        const t0 = Date.now()
-        try {
-            const res = await API.post('/agents/chat', {
-                agent,
-                query: text,
-                sessionId,          // ← session continuity
-            })
-            const data = res.data
-            // Response: { agent, response, sessionId, turns, durationMs, model, provider }
-            setTurns(data.turns ?? turns + 1)
-            setMessages(prev => [...prev, {
-                role:    'assistant',
-                content: data.response || data.fullResponse || JSON.stringify(data),
-                agent:   data.agent   || agent,
-                model:   data.model   || '',
-                provider: data.provider || '',
-                ms:      Date.now() - t0,
-                ts:      Date.now(),
-            }])
-        } catch (err) {
-            const msg = err?.response?.data?.error || err.message || 'Agent request failed'
-            setMessages(prev => [...prev, { role: 'error', content: msg, ts: Date.now() }])
-        } finally {
-            setLoading(false)
-            textareaRef.current?.focus()
-        }
-    }, [agent, query, loading, sessionId, turns])
-
-    // ── Clear / New Chat ──────────────────────────────────────────────────────
-    const newChat = useCallback(async () => {
-        // Tell server to drop the session (fire-and-forget — ok if it fails)
-        try { await API.delete(`/agents/session/${sessionId}`) } catch (_) { /* ignore */ }
-        setMessages([])
-        setSessionId(newSessionId())
-        setTurns(0)
-        setQuery('')
-        textareaRef.current?.focus()
-    }, [sessionId])
-
-    // ── Keyboard handler ─────────────────────────────────────────────────────
-    const handleKeyDown = (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault()
-            sendMessage()
-        }
+    const finalize = (content) => {
+      setMessages(prev => prev.map(m =>
+        m.id === msgId ? { ...m, content, done: true } : m
+      ))
+      setLoading(false)
+      textareaRef.current?.focus()
     }
 
-    const selectedAgent = AGENTS.find(a => a.id === agent)
-    const starters      = STARTERS[agent] || []
+    const failWith = (errMsg) => {
+      setMessages(prev => prev.map(m =>
+        m.id === msgId ? { ...m, content: `⚠️ ${errMsg}`, done: true, isError: true } : m
+      ))
+      setLoading(false)
+    }
 
-    return (
-        <div className="ac-page">
+    try {
+      const token = localStorage.getItem('token') ||
+                    sessionStorage.getItem('token') ||
+                    document.cookie.match(/token=([^;]+)/)?.[1] || ''
 
-            {/* ── Agent selector ── */}
-            <div className="ac-agent-bar">
-                {AGENTS.map(a => (
-                    <button
-                        key={a.id}
-                        className={`ac-agent-pill ${agent === a.id ? 'ac-agent-pill--active' : ''}`}
-                        onClick={() => handleAgentSwitch(a.id)}
-                        title={a.desc}
-                    >
-                        <span className="ac-agent-emoji">{a.emoji}</span>
-                        <span>{a.label}</span>
-                    </button>
-                ))}
-            </div>
+      const resp = await fetch(
+        `${import.meta.env.VITE_API_URL || ''}/api/agents/chat`,
+        {
+          method:  'POST',
+          headers: {
+            'Content-Type':  'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({ agent, message: text, session: sessionId }),
+        }
+      )
 
-            {/* ── Chat card ── */}
-            <div className="ac-chat-wrap card">
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: resp.statusText }))
+        return failWith(err.error || 'Request failed')
+      }
 
-                {/* Header */}
-                <div className="ac-chat-header">
-                    <div className="ac-chat-header-left">
-                        <span className="ac-chat-title">
-                            {selectedAgent?.emoji} {selectedAgent?.label} Agent
-                        </span>
-                        <span className="ac-chat-desc">{selectedAgent?.desc}</span>
-                    </div>
-                    <div className="ac-chat-header-right">
-                        {turns > 0 && (
-                            <span className="ac-turn-badge" title="Messages in this conversation">
-                                {turns} {turns === 1 ? 'turn' : 'turns'}
-                            </span>
-                        )}
-                        {messages.length > 0 && (
-                            <button className="btn btn-secondary ac-clear-btn" onClick={newChat}>
-                                New Chat
-                            </button>
-                        )}
-                    </div>
-                </div>
+      const reader  = resp.body.getReader()
+      const decoder = new TextDecoder()
+      let   buffer  = ''
 
-                {/* Messages */}
-                <div className="ac-messages">
-                    {messages.length === 0 && !loading && (
-                        <div className="ac-empty">
-                            <span className="ac-empty-emoji">{selectedAgent?.emoji}</span>
-                            <p>Ask the <strong>{selectedAgent?.label}</strong> agent anything about your business data.</p>
-                            <p className="ac-empty-hint">
-                                Press <kbd>Enter</kbd> to send &nbsp;·&nbsp; <kbd>Shift+Enter</kbd> for new line
-                            </p>
-                            {starters.length > 0 && (
-                                <div className="ac-starters">
-                                    {starters.map((s, i) => (
-                                        <button
-                                            key={i}
-                                            className="ac-starter-btn"
-                                            onClick={() => sendMessage(s)}
-                                        >
-                                            {s}
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    )}
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const chunks = buffer.split('\n\n')
+        buffer = chunks.pop()            // keep incomplete last chunk
+        for (const chunk of chunks) {
+          const lines     = chunk.split('\n')
+          const eventLine = lines.find(l => l.startsWith('event:'))
+          const dataLine  = lines.find(l => l.startsWith('data:'))
+          if (!dataLine) continue
+          const event = eventLine?.replace('event:', '').trim() || 'step'
+          let   data
+          try { data = JSON.parse(dataLine.replace('data:', '').trim()) } catch { continue }
 
-                    {messages.map((msg, i) => (
-                        <div key={i} className={`ac-msg ac-msg--${msg.role}`}>
-                            {msg.role === 'user' && (
-                                <div className="ac-bubble ac-bubble--user">{msg.content}</div>
-                            )}
-                            {msg.role === 'assistant' && (
-                                <div className="ac-bubble ac-bubble--assistant">
-                                    <div
-                                        className="ac-md"
-                                        dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
-                                    />
-                                    <div className="ac-meta">
-                                        <span>{AGENTS.find(a => a.id === msg.agent)?.emoji || '🤖'} {msg.agent}</span>
-                                        {msg.model && <span>· {msg.model.replace('gemini-', 'Gemini ').replace('gpt-', 'GPT-')}</span>}
-                                        <span>· {(msg.ms / 1000).toFixed(1)}s</span>
-                                    </div>
-                                </div>
-                            )}
-                            {msg.role === 'error' && (
-                                <div className="ac-bubble ac-bubble--error">
-                                    ⚠️ {msg.content}
-                                </div>
-                            )}
-                        </div>
-                    ))}
+          if (event === 'step')  addStep(data)
+          if (event === 'done')  finalize(data.response || '')
+          if (event === 'error') failWith(data.message  || 'Agent error')
+        }
+      }
+    } catch (err) {
+      failWith(err.message || 'Network error')
+    }
+  }, [agent, query, loading, sessionId])
 
-                    {/* Typing indicator */}
-                    {loading && (
-                        <div className="ac-msg ac-msg--assistant">
-                            <div className="ac-bubble ac-bubble--assistant ac-thinking">
-                                <span /><span /><span />
-                            </div>
-                        </div>
-                    )}
+  // ── New chat ─────────────────────────────────────────────────────────────
+  const newChat = useCallback(async () => {
+    esRef.current?.close()
+    try { await API.delete(`/agents/session/${sessionId}`) } catch (_) {}
+    setMessages([])
+    setSessionId(newUUID())
+    setLoading(false)
+    setQuery('')
+    textareaRef.current?.focus()
+  }, [sessionId])
 
-                    <div ref={bottomRef} />
-                </div>
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() }
+  }
 
-                {/* Input row */}
-                <div className="ac-input-row">
-                    <textarea
-                        ref={textareaRef}
-                        className="ac-textarea"
-                        rows={2}
-                        placeholder={`Ask the ${selectedAgent?.label} agent… (Enter to send)`}
-                        value={query}
-                        onChange={e => setQuery(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        disabled={loading}
-                    />
-                    <button
-                        className="btn btn-primary ac-send-btn"
-                        onClick={() => sendMessage()}
-                        disabled={loading || !query.trim()}
-                        aria-label="Send message"
-                    >
-                        {loading ? '…' : '↑'}
-                    </button>
-                </div>
+  const selectedAgent = AGENTS.find(a => a.id === agent)
+  const starters      = STARTERS[agent] || []
 
-                {/* Session debug strip (only in dev) */}
-                {import.meta.env.DEV && (
-                    <div style={{ fontSize: 11, color: '#999', padding: '4px 16px', borderTop: '1px solid #eee' }}>
-                        session: {sessionId.slice(0, 8)}… · {turns} turns
-                    </div>
-                )}
-            </div>
+  return (
+    <div className="ac-page">
+
+      {/* Agent selector */}
+      <div className="ac-agent-bar">
+        {AGENTS.map(a => (
+          <button
+            key={a.id}
+            className={`ac-agent-pill ${agent === a.id ? 'ac-agent-pill--active' : ''}`}
+            onClick={() => handleAgentSwitch(a.id)}
+            title={a.desc}
+          >
+            <span className="ac-agent-emoji">{a.emoji}</span>
+            <span>{a.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Chat card */}
+      <div className="ac-chat-wrap card">
+
+        {/* Header */}
+        <div className="ac-chat-header">
+          <div className="ac-chat-header-left">
+            <span className="ac-chat-title">{selectedAgent?.emoji} {selectedAgent?.label} Agent</span>
+            <span className="ac-chat-desc">{selectedAgent?.desc}</span>
+          </div>
+          <div className="ac-chat-header-right">
+            {messages.length > 0 && (
+              <button className="btn btn-secondary ac-clear-btn" onClick={newChat}>New Chat</button>
+            )}
+          </div>
         </div>
-    )
+
+        {/* Messages */}
+        <div className="ac-messages">
+          {messages.length === 0 && !loading && (
+            <div className="ac-empty">
+              <span className="ac-empty-emoji">{selectedAgent?.emoji}</span>
+              <p>Ask the <strong>{selectedAgent?.label}</strong> agent anything — it can read data <em>and</em> take actions.</p>
+              <p className="ac-empty-hint">Enter to send · Shift+Enter for new line</p>
+              {starters.length > 0 && (
+                <div className="ac-starters">
+                  {starters.map((s, i) => (
+                    <button key={i} className="ac-starter-btn" onClick={() => sendMessage(s)}>{s}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {messages.map((msg, i) => (
+            <div key={i} className={`ac-msg ac-msg--${msg.role}`}>
+
+              {/* User bubble */}
+              {msg.role === 'user' && (
+                <div className="ac-bubble ac-bubble--user">{msg.content}</div>
+              )}
+
+              {/* Assistant bubble — shows live steps + final response */}
+              {msg.role === 'assistant' && (
+                <div className="ac-bubble ac-bubble--assistant">
+
+                  {/* Live steps */}
+                  {(msg.steps || []).length > 0 && (
+                    <div className="ac-steps">
+                      {msg.steps.map((step, si) => <StepBubble key={si} step={step} />)}
+                    </div>
+                  )}
+
+                  {/* Typing indicator while still loading */}
+                  {!msg.done && (
+                    <div className="ac-thinking">
+                      <span /><span /><span />
+                    </div>
+                  )}
+
+                  {/* Final response */}
+                  {msg.done && msg.content && !msg.isError && (
+                    <div
+                      className="ac-md"
+                      dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
+                    />
+                  )}
+
+                  {/* Error */}
+                  {msg.done && msg.isError && (
+                    <div className="ac-bubble--error">{msg.content}</div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+
+          <div ref={bottomRef} />
+        </div>
+
+        {/* Input row */}
+        <div className="ac-input-row">
+          <textarea
+            ref={textareaRef}
+            className="ac-textarea"
+            rows={2}
+            placeholder={`Ask the ${selectedAgent?.label} agent… (Enter to send)`}
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={loading}
+          />
+          <button
+            className="btn btn-primary ac-send-btn"
+            onClick={() => sendMessage()}
+            disabled={loading || !query.trim()}
+            aria-label="Send message"
+          >
+            {loading ? '…' : '↑'}
+          </button>
+        </div>
+
+        {import.meta.env.DEV && (
+          <div style={{ fontSize: 11, color: '#999', padding: '4px 16px', borderTop: '1px solid #eee' }}>
+            session: {sessionId.slice(0, 8)}…
+          </div>
+        )}
+      </div>
+
+      <style>{`
+        .ac-steps {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          margin-bottom: 10px;
+          padding: 8px 10px;
+          background: var(--color-surface-offset, #f5f5f5);
+          border-radius: 8px;
+          border-left: 3px solid var(--color-primary, #01696f);
+        }
+        .ac-step {
+          display: flex;
+          align-items: flex-start;
+          gap: 6px;
+          font-size: 12px;
+          color: var(--color-text-muted, #666);
+          line-height: 1.4;
+        }
+        .ac-step--tool_call   { color: var(--color-primary, #01696f); font-weight: 500; }
+        .ac-step--tool_result { color: var(--color-success, #437a22); }
+        .ac-step--tool_error  { color: var(--color-error,   #a12c7b); }
+        .ac-step--spawn       { color: var(--color-blue,    #006494); font-weight: 500; }
+        .ac-step-icon { flex-shrink: 0; }
+        .ac-step-label { word-break: break-word; }
+        .ac-thinking {
+          display: flex; gap: 4px; padding: 6px 2px;
+        }
+        .ac-thinking span {
+          width: 7px; height: 7px;
+          background: var(--color-primary, #01696f);
+          border-radius: 50%;
+          animation: ac-bounce 1.2s infinite;
+        }
+        .ac-thinking span:nth-child(2) { animation-delay: .2s; }
+        .ac-thinking span:nth-child(3) { animation-delay: .4s; }
+        @keyframes ac-bounce {
+          0%,80%,100% { transform: translateY(0); opacity: .5; }
+          40%          { transform: translateY(-5px); opacity: 1; }
+        }
+      `}</style>
+    </div>
+  )
 }
