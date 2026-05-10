@@ -1,11 +1,9 @@
 // AgentChat.jsx — SSE-streaming multi-agent chat UI
-// Consumes Server-Sent Events from POST /api/agents/chat and renders
-// live tool-call steps, agent spawns, and the final markdown response.
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import API from '../api'
 
-// ── Agent definitions ─────────────────────────────────────────────────────────
+// ── Agent definitions ──────────────────────────────────────────────────────────────
 const AGENTS = [
   { id: 'coordinator', label: 'Coordinator', emoji: '🧠', desc: 'Routes to the right specialist and executes actions' },
   { id: 'inventory',   label: 'Inventory',   emoji: '📦', desc: 'Stock levels, thans, bales' },
@@ -34,21 +32,34 @@ const STARTERS = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function newUUID() { return crypto.randomUUID() }
-
-// Read JWT the same way api.js does — key is kt_impex_token
-function getToken() {
-  return localStorage.getItem('kt_impex_token') || ''
+function getToken() { return localStorage.getItem('kt_impex_token') || '' }
+function getBaseUrl() {
+  return import.meta.env.VITE_API_URL || 'http://localhost:5000'
 }
 
-// Base URL the same way api.js computes it
-function getBaseUrl() {
-  return import.meta.env.VITE_API_URL
-    ? import.meta.env.VITE_API_URL
-    : 'http://localhost:5000'
+// Strip all internal scaffolding from the final message before rendering
+function cleanResponse(text) {
+  if (!text) return ''
+  return text
+    // VERDICT lines
+    .replace(/^(VERDICT|RETAILER SIGNAL|PROCUREMENT VERDICT|PRICING VERDICT|RETRIEVAL|WAREHOUSE VERDICT|SALES SIGNAL)[^\n]*/gm, '')
+    // Confidence markers (inline and standalone)
+    .replace(/\|?\s*Confidence:\s*(HIGH|MEDIUM|LOW)\s*/gi, '')
+    .replace(/^Confidence:\s*(HIGH|MEDIUM|LOW).*$/gm, '')
+    // Invoking / agent output headers
+    .replace(/^Invoking:\s*.+$/gm, '')
+    .replace(/^To \w+Agent?:\s*/gm, '')
+    .replace(/^\w+(?:Agent|Manager)?\s+Output:\s*/gm, '')
+    // JSON code blocks (internal tool scaffolding)
+    .replace(/```json[\s\S]*?```/g, '')
+    // Collapse extra blank lines
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
 }
 
 function renderMarkdown(text) {
   if (!text) return ''
+  // Tables
   text = text.replace(
     /\|(.+)\|\n\|[-| :]+\|\n((\|.+\|\n?)+)/g,
     (_, header, rows) => {
@@ -73,38 +84,84 @@ function renderMarkdown(text) {
   return `<p>${text}</p>`
 }
 
-// ── Step bubble ───────────────────────────────────────────────────────────────
-const STEP_ICONS = {
-  thinking:          '💭',
-  tool_call:         '🔧',
-  tool_result:       '✅',
-  tool_error:        '❌',
-  spawn:             '🤖',
-  spawn_complete:    '✓',
-  coordinator_start: '🧠',
-}
-
+// ── Step bubble — only shows human-readable status, no raw JSON ────────────────
 function StepBubble({ step }) {
-  const icon = STEP_ICONS[step.type] || '•'
-  let label = ''
-  if      (step.type === 'thinking')           label = step.message
-  else if (step.type === 'tool_call')          label = `Calling ${step.tool}(${JSON.stringify(step.args || {}).slice(0, 60)}…)`
-  else if (step.type === 'tool_result')        label = `${step.tool} → ${JSON.stringify(step.result || {}).slice(0, 80)}…`
-  else if (step.type === 'tool_error')         label = `${step.tool} error: ${step.error}`
-  else if (step.type === 'spawn')              label = `Spawning ${step.agent} agent: ${step.task?.slice(0, 60)}…`
-  else if (step.type === 'spawn_complete')     label = `${step.agent} agent finished`
-  else if (step.type === 'coordinator_start')  label = step.message
-  else                                         label = step.message || step.type
+  // tool_result is intentionally hidden — too noisy for end users
+  if (step.type === 'tool_result') return null
+
+  const labels = {
+    thinking:          () => step.message || 'Thinking…',
+    tool_call:         () => `Checking ${step.tool?.replace(/_/g, ' ')}…`,
+    tool_error:        () => `⚠️ ${step.tool}: ${step.error}`,
+    spawn:             () => `Asking ${step.agent} specialist…`,
+    spawn_complete:    () => `${step.agent} done`,
+    coordinator_start: () => step.message || 'Coordinator agent started',
+  }
+
+  const icons = {
+    thinking:          '💭',
+    tool_call:         '⛳',
+    tool_error:        '❌',
+    spawn:             '🤖',
+    spawn_complete:    '✓',
+    coordinator_start: '🧠',
+  }
+
+  const labelFn = labels[step.type]
+  if (!labelFn) return null  // hide unknown step types
 
   return (
     <div className={`ac-step ac-step--${step.type}`}>
-      <span className="ac-step-icon">{icon}</span>
-      <span className="ac-step-label">{label}</span>
+      <span className="ac-step-icon">{icons[step.type] || '•'}</span>
+      <span className="ac-step-label">{labelFn()}</span>
     </div>
   )
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
+// ── Collapsible steps panel ───────────────────────────────────────────────────────
+function StepsPanel({ steps, done }) {
+  const [open, setOpen] = useState(false)
+
+  // Only show visible steps (tool_result filtered out inside StepBubble)
+  const visibleSteps = steps.filter(s =>
+    s.type !== 'tool_result' && s.type !== 'coordinator_start'
+  )
+
+  if (visibleSteps.length === 0 && done) return null
+
+  // While loading: show latest step inline (no toggle needed)
+  if (!done) {
+    const latest = [...steps].reverse().find(s => s.type === 'thinking' || s.type === 'tool_call' || s.type === 'coordinator_start')
+    return (
+      <div className="ac-steps-inline">
+        <span className="ac-step-icon">{'  '}</span>
+        <span className="ac-step-label ac-step-label--muted">
+          {latest?.type === 'coordinator_start' ? 'Coordinator agent started' :
+           latest?.type === 'tool_call'         ? `Checking ${latest.tool?.replace(/_/g,' ')}…` :
+           latest?.message                      || 'Thinking…'}
+        </span>
+      </div>
+    )
+  }
+
+  if (visibleSteps.length === 0) return null
+
+  return (
+    <div className="ac-steps-wrap">
+      <button className="ac-steps-toggle" onClick={() => setOpen(o => !o)}>
+        <span>{open ? '▾' : '▸'}</span>
+        <span>{visibleSteps.length} step{visibleSteps.length !== 1 ? 's' : ''}</span>
+      </button>
+      {open && (
+        <div className="ac-steps">
+          {visibleSteps.map((step, i) => <StepBubble key={i} step={step} />)}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Main component ───────────────────────────────────────────────────────────────
 export default function AgentChat({ user }) {
   const [agent,     setAgent]     = useState('coordinator')
   const [messages,  setMessages]  = useState([])
@@ -129,7 +186,6 @@ export default function AgentChat({ user }) {
     setLoading(false)
   }
 
-  // ── Send via SSE fetch ────────────────────────────────────────────────────
   const sendMessage = useCallback(async (overrideText) => {
     const text = (overrideText ?? query).trim()
     if (!text || loading) return
@@ -151,7 +207,7 @@ export default function AgentChat({ user }) {
 
     const finalize = (content) => {
       setMessages(prev => prev.map(m =>
-        m.id === msgId ? { ...m, content, done: true } : m
+        m.id === msgId ? { ...m, content: cleanResponse(content), done: true } : m
       ))
       setLoading(false)
       textareaRef.current?.focus()
@@ -171,7 +227,7 @@ export default function AgentChat({ user }) {
           method:  'POST',
           headers: {
             'Content-Type':  'application/json',
-            'Authorization': `Bearer ${getToken()}`,   // ← kt_impex_token
+            'Authorization': `Bearer ${getToken()}`,
           },
           body: JSON.stringify({ agent, message: text, session: sessionId }),
         }
@@ -211,7 +267,6 @@ export default function AgentChat({ user }) {
     }
   }, [agent, query, loading, sessionId])
 
-  // ── New chat ──────────────────────────────────────────────────────────────
   const newChat = useCallback(async () => {
     esRef.current?.close()
     try { await API.delete(`/agents/session/${sessionId}`) } catch (_) {}
@@ -290,11 +345,8 @@ export default function AgentChat({ user }) {
               {msg.role === 'assistant' && (
                 <div className="ac-bubble ac-bubble--assistant">
 
-                  {(msg.steps || []).length > 0 && (
-                    <div className="ac-steps">
-                      {msg.steps.map((step, si) => <StepBubble key={si} step={step} />)}
-                    </div>
-                  )}
+                  {/* Steps: inline spinner while loading, collapsible after done */}
+                  <StepsPanel steps={msg.steps || []} done={msg.done} />
 
                   {!msg.done && (
                     <div className="ac-thinking">
@@ -350,15 +402,43 @@ export default function AgentChat({ user }) {
       </div>
 
       <style>{`
+        /* Loading inline status */
+        .ac-steps-inline {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 12px;
+          color: var(--color-text-muted, #888);
+          margin-bottom: 8px;
+          padding: 2px 0;
+        }
+        .ac-step-label--muted { font-style: italic; }
+
+        /* Collapsible steps toggle */
+        .ac-steps-wrap { margin-bottom: 10px; }
+        .ac-steps-toggle {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          font-size: 11px;
+          color: var(--color-text-muted, #888);
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 2px 0;
+          user-select: none;
+        }
+        .ac-steps-toggle:hover { color: var(--color-primary, #01696f); }
+
+        /* Steps list */
         .ac-steps {
           display: flex;
           flex-direction: column;
           gap: 4px;
-          margin-bottom: 10px;
+          margin-top: 6px;
           padding: 8px 10px;
           background: var(--color-surface-offset, #f5f5f5);
           border-radius: 8px;
-          border-left: 3px solid var(--color-primary, #01696f);
         }
         .ac-step {
           display: flex;
@@ -368,12 +448,13 @@ export default function AgentChat({ user }) {
           color: var(--color-text-muted, #666);
           line-height: 1.4;
         }
-        .ac-step--tool_call   { color: var(--color-primary, #01696f); font-weight: 500; }
-        .ac-step--tool_result { color: var(--color-success, #437a22); }
-        .ac-step--tool_error  { color: var(--color-error,   #a12c7b); }
-        .ac-step--spawn       { color: var(--color-blue,    #006494); font-weight: 500; }
-        .ac-step-icon { flex-shrink: 0; }
+        .ac-step--tool_call  { color: var(--color-primary, #01696f); }
+        .ac-step--tool_error { color: var(--color-error,   #a12c7b); }
+        .ac-step--spawn      { color: var(--color-blue,    #006494); }
+        .ac-step-icon  { flex-shrink: 0; }
         .ac-step-label { word-break: break-word; }
+
+        /* Thinking dots */
         .ac-thinking { display: flex; gap: 4px; padding: 6px 2px; }
         .ac-thinking span {
           width: 7px; height: 7px;
