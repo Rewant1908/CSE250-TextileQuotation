@@ -1,10 +1,10 @@
 /*
  * theme.css — KT Impex Dealer UI design tokens
- * Imported by index.css. Does NOT affect admin or login pages.
+ * Scoped entirely to .dealer-page so admin/login pages are never affected.
  * No dark mode. Dealer-facing only.
  */
 
-:root {
+.dealer-page {
   /* Brand */
   --kt-primary:        #1a3a5c;
   --kt-primary-hover:  #14304d;
@@ -37,10 +37,7 @@
 
   /* Transitions */
   --kt-transition:     180ms cubic-bezier(0.16,1,0.3,1);
-}
 
-/* ── Dealer page wrapper ──────────────────────────────────────────────── */
-.dealer-page {
   background: var(--kt-bg);
   min-height: 100vh;
   font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;

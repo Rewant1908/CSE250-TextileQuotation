@@ -20,8 +20,9 @@ import DealerDispatches     from './components/DealerDispatches'
 import Header               from './components/Header'
 import Footer               from './components/Footer'
 import { USER_TABS, ADMIN_TABS } from './constants/tabs'
-import './App.css'
+// theme.css imported first so App.css admin styles always win on shared selectors
 import './theme.css'
+import './App.css'
 
 const STORAGE_KEY = 'kt_impex_user'
 const TOKEN_KEY   = 'kt_impex_token'
@@ -118,7 +119,7 @@ function App() {
         </div>
     )
 
-    // ── Admin layout (completely unchanged) ───────────────────────────────────
+    // ── Admin layout ─────────────────────────────────────────────────────────
     if (isAdmin) return (
         <div className="app">
             {sessionBanner}
@@ -158,13 +159,13 @@ function App() {
                     {activeTab === 9  && <AgentChat             user={user} />}
                 </TabErrorBoundary>
             </main>
-            <footer className="footer">
+            <footer className="admin-footer">
                 <p>KT Impex, Birgunj, Nepal | Dealer quotation and factory sourcing portal</p>
             </footer>
         </div>
     )
 
-    // ── Dealer layout ────────────────────────────────────────────────────────────────
+    // ── Dealer layout ─────────────────────────────────────────────────────────
     return (
         <div className="dealer-page">
             {sessionBanner}
