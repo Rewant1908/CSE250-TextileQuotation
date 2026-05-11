@@ -49,6 +49,12 @@ async function notifyCustomer(phone, logLabel) {
         .catch(err => logger.warn({ err, to }, `[quotations] WhatsApp notification failed (${logLabel}) — non-critical`));
 }
 
+// Helper: COALESCE quotation_number so legacy rows (NULL) always get KTQ-YYYY-XXXXXX format
+// Uses the row's created_at year if available, else current year.
+const QN_EXPR = `COALESCE(q.quotation_number,
+    CONCAT('KTQ-', YEAR(q.created_at), '-', LPAD(q.quotation_id, 6, '0')))
+    AS quotation_number`;
+
 // ── GET /api/quotations ───────────────────────────────────────────────────────
 router.get('/', checkPermission('VIEW_QUOTATIONS'), async (req, res) => {
     let conn;
@@ -56,14 +62,14 @@ router.get('/', checkPermission('VIEW_QUOTATIONS'), async (req, res) => {
         conn = await pool.getConnection();
         const rows = req.user.role === 'admin'
             ? await conn.query(`
-                SELECT q.quotation_id, q.quotation_number,
+                SELECT q.quotation_id, ${QN_EXPR},
                        q.user_id, c.customer_name, c.contact_phone,
                        q.total_amount, q.status, q.decline_reason, q.created_at
                 FROM quotations q
                 LEFT JOIN customers c ON c.customer_id = q.customer_id
                 ORDER BY q.created_at DESC`)
             : await conn.query(`
-                SELECT q.quotation_id, q.quotation_number,
+                SELECT q.quotation_id, ${QN_EXPR},
                        q.user_id, c.customer_name, c.contact_phone,
                        q.total_amount, q.status, q.decline_reason, q.created_at
                 FROM quotations q
@@ -84,7 +90,7 @@ router.get('/:id', checkPermission('VIEW_QUOTATIONS'), async (req, res) => {
     try {
         conn = await pool.getConnection();
         const [quotation] = await conn.query(`
-            SELECT q.quotation_id, q.quotation_number,
+            SELECT q.quotation_id, ${QN_EXPR},
                    q.user_id, q.customer_id,
                    c.customer_name, c.contact_phone,
                    q.total_amount, q.status, q.decline_reason, q.created_at
