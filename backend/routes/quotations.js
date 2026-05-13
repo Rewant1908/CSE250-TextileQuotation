@@ -36,17 +36,40 @@ function normaliseStatus(s) {
 }
 
 /**
- * notifyCustomer(phone, logLabel)
+ * notifyCustomer(phone, logLabel, templateData)
  * Fires sendQuotationNotification for a phone number (strips leading + if present).
  * Non-blocking — errors are logged but never bubble up to the HTTP response.
  */
-async function notifyCustomer(phone, logLabel) {
+async function notifyCustomer(phone, logLabel, templateData = null) {
     if (!phone) return;
     // Normalise: remove +, spaces, dashes
     const to = String(phone).replace(/[\s\-+]/g, '');
-    sendQuotationNotification(to)
+    const template = templateData ? buildQuotationTemplatePayload(templateData) : {}
+
+    sendQuotationNotification(to, template)
         .then(() => logger.info({ to }, `[quotations] WhatsApp notification sent (${logLabel})`))
         .catch(err => logger.warn({ err, to }, `[quotations] WhatsApp notification failed (${logLabel}) — non-critical`));
+}
+
+function buildQuotationTemplateData({ customer_name, quotation_number, total_amount }) {
+    return {
+        customer_name: String(customer_name || 'Customer'),
+        quotation_number: String(quotation_number || ''),
+        total_amount: Number(total_amount || 0).toFixed(2),
+    };
+}
+
+function buildQuotationTemplatePayload(templateData) {
+    return {
+        components: [{
+            type: 'body',
+            parameters: [
+                { type: 'text', text: String(templateData.customer_name || 'Customer') },
+                { type: 'text', text: String(templateData.quotation_number || '') },
+                { type: 'text', text: String(templateData.total_amount ?? '') },
+            ]
+        }]
+    };
 }
 
 // Helper: COALESCE quotation_number so legacy rows (NULL) always get KTQ-YYYY-XXXXXX format
@@ -188,7 +211,13 @@ router.post('/', checkPermission('CREATE_QUOTATION'), async (req, res) => {
 
         // ── WhatsApp: notify customer that a quotation has been created ──────
         // Fires after commit so HTTP response is never delayed by WhatsApp API.
-        notifyCustomer(contact_phone, `POST quotation_id=${quotation_id}`);
+        notifyCustomer(contact_phone, `POST quotation_id=${quotation_id}`,
+            buildQuotationTemplateData({
+                customer_name: customer_name.trim(),
+                quotation_number,
+                total_amount
+            })
+        );
 
         res.status(201).json({ success: true, quotation_id, quotation_number });
     } catch (err) {
@@ -228,7 +257,20 @@ router.patch('/:id/status', checkPermission('MANAGE_QUOTATION_STATUS'), async (r
                  WHERE q.quotation_id = ?`,
                 [req.params.id]
             );
-            notifyCustomer(row?.contact_phone, `PATCH status=sent quotation_id=${req.params.id}`);
+            const [quotationMeta] = await conn.query(
+                `SELECT ${QN_EXPR}, q.total_amount, c.customer_name
+                 FROM quotations q
+                 LEFT JOIN customers c ON c.customer_id = q.customer_id
+                 WHERE q.quotation_id = ?`,
+                [req.params.id]
+            );
+            notifyCustomer(row?.contact_phone, `PATCH status=sent quotation_id=${req.params.id}`,
+                buildQuotationTemplateData({
+                    customer_name: quotationMeta?.customer_name || 'Customer',
+                    quotation_number: quotationMeta?.quotation_number || `#${req.params.id}`,
+                    total_amount: quotationMeta?.total_amount || 0,
+                })
+            );
         }
 
         res.json({ success: true, status });
