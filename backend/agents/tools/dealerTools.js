@@ -2,6 +2,14 @@
 // Dealer-scoped tools for WhatsApp and authenticated dealer assistant chats.
 // All queries are constrained by assigned user_id to prevent cross-dealer leakage.
 
+const DEAD_STOCK_LONG_IDLE_DAYS = 60
+const DISCOUNT_SLOW = 10
+const DISCOUNT_DEAD = 15
+const DISCOUNT_DEAD_LONG_IDLE = 25
+const DISCOUNT_RATE_SLOW = DISCOUNT_SLOW / 100
+const DISCOUNT_RATE_DEAD = DISCOUNT_DEAD / 100
+const DISCOUNT_RATE_DEAD_LONG_IDLE = DISCOUNT_DEAD_LONG_IDLE / 100
+
 export function buildDealerTools(userId) {
   const uid = Number(userId)
 
@@ -11,7 +19,7 @@ export function buildDealerTools(userId) {
       description: 'Get my quotation KPI counters and accepted value totals.',
       parameters: { type: 'object', properties: {}, required: [] },
       execute: async (_args, db) => {
-        const [[kpis]] = await db.query(
+        const rows = await db.query(
           `SELECT
              COUNT(*)                           AS total_quotations,
              SUM(status IN ('draft','pending')) AS draft_count,
@@ -23,6 +31,7 @@ export function buildDealerTools(userId) {
            WHERE user_id = ?`,
           [uid]
         )
+        const kpis = rows?.[0] || {}
         return { kpis }
       },
     },
@@ -97,17 +106,17 @@ export function buildDealerTools(userId) {
                   t.remaining_stock, t.selling_price, t.movement_speed,
                   CASE
                     WHEN t.movement_speed = 'dead'
-                     AND DATEDIFF(CURDATE(), DATE(COALESCE(MAX(im.movement_date), t.created_at))) > 60 THEN 25
-                    WHEN t.movement_speed = 'dead' THEN 15
-                    ELSE 10
+                     AND DATEDIFF(CURDATE(), DATE(COALESCE(MAX(im.movement_date), t.created_at))) > ? THEN ?
+                    WHEN t.movement_speed = 'dead' THEN ?
+                    ELSE ?
                   END AS discount_pct,
                   ROUND(
                     t.selling_price * (
                       1 - CASE
                             WHEN t.movement_speed = 'dead'
-                             AND DATEDIFF(CURDATE(), DATE(COALESCE(MAX(im.movement_date), t.created_at))) > 60 THEN 0.25
-                            WHEN t.movement_speed = 'dead' THEN 0.15
-                            ELSE 0.10
+                             AND DATEDIFF(CURDATE(), DATE(COALESCE(MAX(im.movement_date), t.created_at))) > ? THEN ?
+                            WHEN t.movement_speed = 'dead' THEN ?
+                            ELSE ?
                           END
                     ), 2
                   ) AS offer_price
@@ -120,7 +129,12 @@ export function buildDealerTools(userId) {
            ORDER BY CASE t.movement_speed WHEN 'dead' THEN 0 ELSE 1 END,
                     DATEDIFF(CURDATE(), DATE(COALESCE(MAX(im.movement_date), t.created_at))) DESC
            LIMIT ?`,
-          [limit]
+          [
+            // repeated intentionally because the SQL uses threshold/discount values in two CASE clauses
+            DEAD_STOCK_LONG_IDLE_DAYS, DISCOUNT_DEAD_LONG_IDLE, DISCOUNT_DEAD, DISCOUNT_SLOW,
+            DEAD_STOCK_LONG_IDLE_DAYS, DISCOUNT_RATE_DEAD_LONG_IDLE, DISCOUNT_RATE_DEAD, DISCOUNT_RATE_SLOW,
+            limit,
+          ]
         )
         return { rows, count: rows.length }
       },

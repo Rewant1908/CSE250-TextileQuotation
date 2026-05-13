@@ -33,6 +33,15 @@ import { randomUUID }          from 'crypto'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname  = dirname(__filename)
 const router     = Router()
+const AGENT_PROMPT_FILES = Object.freeze({
+  inventory: resolve(__dirname, '../agents/inventory.agent.md'),
+  retailer: resolve(__dirname, '../agents/retailer.agent.md'),
+  procurement: resolve(__dirname, '../agents/procurement.agent.md'),
+  warehouse: resolve(__dirname, '../agents/warehouse.agent.md'),
+  pricing: resolve(__dirname, '../agents/pricing.agent.md'),
+  sales: resolve(__dirname, '../agents/sales.agent.md'),
+  'quotation-summary': resolve(__dirname, '../agents/quotation-summary.agent.md'),
+})
 
 const VALID_AGENTS = [
   'inventory', 'retailer', 'procurement', 'warehouse',
@@ -101,13 +110,15 @@ router.post('/chat', checkPermission('USE_DEALER_AGENT'), async (req, res) => {
           'Keep replies concise, plain text, and action-oriented.',
         ].join(' ')
       } else {
-        const mdPath = resolve(__dirname, `../agents/${requestedAgent}.agent.md`)
+        const mdPath = AGENT_PROMPT_FILES[requestedAgent]
         systemPrompt = `You are the ${requestedAgent} specialist for KT Impex textile. Use your tools only.`
-        try {
-          const raw = await readFile(mdPath, 'utf-8')
-          const m = raw.match(/^---[\s\S]*?---\n([\s\S]*)$/)
-          if (m) systemPrompt = m[1].trim()
-        } catch (_) {}
+        if (mdPath) {
+          try {
+            const raw = await readFile(mdPath, 'utf-8')
+            const m = raw.match(/^---[\s\S]*?---\n([\s\S]*)$/)
+            if (m) systemPrompt = m[1].trim()
+          } catch (_) {}
+        }
       }
       finalResponse = await runWithTools({
         systemPrompt, tools,

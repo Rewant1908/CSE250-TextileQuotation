@@ -70,11 +70,18 @@ function getPhoneCandidates(input) {
     return [...new Set([raw, normalised, local, last10].filter(Boolean))]
 }
 
+function dbPhoneDigitsExpr(sqlExpr) {
+    return `REPLACE(REPLACE(REPLACE(COALESCE(${sqlExpr}, ''), '+', ''), ' ', ''), '-', '')`
+}
+
 async function findDealerProfileByWhatsapp(from) {
     const candidates = getPhoneCandidates(from)
     if (!candidates.length) return null
     const placeholders = candidates.map(() => '?').join(', ')
 
+    // Backward-compatibility:
+    // Older deployments use different retailer phone column names (phone, phone_number),
+    // and v5 introduces whatsapp_number. We attempt each known schema shape safely.
     const attempts = [
         { expr: 'COALESCE(r.whatsapp_number, r.phone_number, r.phone)' },
         { expr: 'COALESCE(r.phone_number, r.phone)' },
@@ -94,14 +101,16 @@ async function findDealerProfileByWhatsapp(from) {
                      FROM retailers r
                      WHERE (r.is_deleted = 0 OR r.is_deleted IS NULL)
                        AND r.assigned_user_id IS NOT NULL
-                       AND REPLACE(REPLACE(REPLACE(COALESCE(${attempt.expr}, ''), '+', ''), ' ', ''), '-', '')
-                           IN (${placeholders})
+                       AND ${dbPhoneDigitsExpr(attempt.expr)} IN (${placeholders})
                      LIMIT 1`,
                     candidates
                 )
                 if (row) return row
             } catch (err) {
-                if (err.code !== 'ER_BAD_FIELD_ERROR') throw err
+                if (err.code !== 'ER_BAD_FIELD_ERROR') {
+                    logger.error({ err, attempt: attempt.expr }, '[whatsapp] dealer lookup query failed')
+                    throw err
+                }
             }
         }
         return null

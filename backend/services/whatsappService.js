@@ -40,6 +40,7 @@ const TEMPLATE_LANG = IS_PROD ? 'en'          : 'en_US'
 const DEFAULT_COUNTRY_CODE = process.env.WHATSAPP_DEFAULT_COUNTRY_CODE || '977'
 const DEALER_SESSION_TTL_SECONDS = 12 * 60 * 60
 const DEALER_SESSION_MAX_MESSAGES = 20
+const MARKDOWN_CHARS_RE = /[*_~`#]/g
 
 // ── Phone number normaliser ───────────────────────────────────────────────────
 /**
@@ -432,7 +433,7 @@ export async function agentFallback(text, db) {
             username:  'whatsapp',
         })
         return result.fullResponse
-            .replace(/[*_~`#]/g, '')
+            .replace(MARKDOWN_CHARS_RE, '')
             .slice(0, 1200)
     } catch (err) {
         logger.error({ err }, '[whatsapp] agentFallback failed')
@@ -441,7 +442,9 @@ export async function agentFallback(text, db) {
 }
 
 function dealerSessionKey(phone) {
-    return `whatsapp:dealer:session:${formatWhatsAppNumber(phone)}`
+    const raw = String(phone || '').trim()
+    if (!raw) throw new Error('phone is required for dealer session key')
+    return `whatsapp:dealer:session:${formatWhatsAppNumber(raw)}`
 }
 
 export async function getDealerConversation(phone) {
@@ -468,7 +471,6 @@ export async function dealerAgentFallback(text, db, { userId, phone, shopName })
         const response = await runWithTools({
             systemPrompt: [
                 'You are KT Impex WhatsApp assistant for registered dealers.',
-                `Dealer user_id=${userId}. Shop=${shopName || 'unknown'}.`,
                 'Only use tools for this dealer context.',
                 'Never disclose other dealers\' data.',
                 'Keep answers plain text, concise, and practical.',
@@ -481,7 +483,7 @@ export async function dealerAgentFallback(text, db, { userId, phone, shopName })
         })
 
         const cleaned = String(response || '')
-            .replace(/[*_~`#]/g, '')
+            .replace(MARKDOWN_CHARS_RE, '')
             .slice(0, 1200)
 
         await appendDealerConversation(phone, 'user', text)

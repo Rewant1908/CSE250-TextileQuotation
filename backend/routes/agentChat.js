@@ -25,13 +25,17 @@ router.post('/', checkPermission('USE_DEALER_AGENT'), async (req, res) => {
   res.flushHeaders()
 
   const emit = (event, data) => {
-    try { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`) } catch (_) {}
+    try { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`) }
+    catch (err) { logger.warn({ err, event }, 'agentChat SSE emit failed') }
   }
 
   const sid = sessionId || randomUUID()
 
   try {
-    const fullHistory = history.length ? history : getHistory(sid)
+    const storedHistory = getHistory(sid)
+    const fullHistory = Array.isArray(history) && history.length
+      ? history
+      : (Array.isArray(storedHistory) ? storedHistory : [])
     const isAdmin = req.user?.role === 'admin'
     let finalResponse = ''
 
